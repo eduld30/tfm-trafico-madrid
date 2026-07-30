@@ -21,7 +21,69 @@ datasets:
       transformations:
         - type: normalize_column_names
     silver:
-      # Pendiente de confirmar la clave de accidente con una muestra real.
-      enabled: false
+      # No existe un identificador de persona implicada; overwrite conserva
+      # filas legítimamente repetidas sin inventar una clave de merge.
+      enabled: true
       target_path: "accidentes/accidentes_historico"
       write_strategy: overwrite
+      transformations:
+        - type: empty_to_null
+          columns:
+            - num_expediente
+            - fecha
+            - hora
+            - localizacion
+            - numero
+            - cod_distrito
+            - distrito
+            - tipo_accidente
+            - estado_meteorologico
+            - tipo_vehiculo
+            - tipo_persona
+            - rango_edad
+            - sexo
+            - cod_lesividad
+            - lesividad
+            - coordenada_x_utm
+            - coordenada_y_utm
+            - positiva_alcohol
+            - positiva_droga
+        - type: filter
+          condition: "num_expediente IS NOT NULL"
+        - type: parse_timestamp
+          source_columns:
+            - fecha
+            - hora
+          target_column: fecha_hora
+          format: "dd/MM/yyyy H:mm:ss"
+        - type: parse_date
+          source_column: fecha
+          target_column: fecha
+          format: "dd/MM/yyyy"
+        - type: regex_replace
+          columns:
+            - coordenada_x_utm
+            - coordenada_y_utm
+          pattern: ","
+          replacement: "."
+        - type: cast
+          columns:
+            cod_distrito: integer
+            cod_lesividad: integer
+            coordenada_x_utm: double
+            coordenada_y_utm: double
+            positiva_droga: integer
+        - type: trim
+          columns:
+            - num_expediente
+            - localizacion
+            - numero
+            - distrito
+            - tipo_accidente
+            - estado_meteorologico
+            - tipo_vehiculo
+            - tipo_persona
+            - rango_edad
+            - sexo
+            - lesividad
+            - positiva_alcohol

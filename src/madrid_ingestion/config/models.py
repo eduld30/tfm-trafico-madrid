@@ -19,9 +19,12 @@ SUPPORTED_TRANSFORMATIONS = frozenset(
         "trim",
         "empty_to_null",
         "replace_values",
+        "regex_replace",
         "filter",
         "add_literal",
         "parse_timestamp",
+        "parse_date",
+        "hourly_wide_to_long",
         "deduplicate",
         "lookup_join",
     }
@@ -177,12 +180,24 @@ class TransformationConfig(StrictModel):
     source_columns: list[str] | None = None
     target_column: str | None = None
     format: str | None = None
+    pattern: str | None = None
+    replacement: str | None = None
     keys: list[str] | None = None
     order_by: list[OrderByConfig] | None = None
     lookup_table: LookupTableConfig | None = None
     join_type: Literal["left", "inner"] | None = None
     conditions: dict[str, str] | None = None
     select: dict[str, str] | list[str] | None = None
+    year_column: str | None = None
+    month_column: str | None = None
+    day_column: str | None = None
+    value_prefix: str | None = None
+    validity_prefix: str | None = None
+    value_column: str | None = None
+    validity_column: str | None = None
+    timestamp_column: str | None = None
+    hours: int | None = None
+    hour_offset: int = -1
 
     @model_validator(mode="after")
     def validate_parameters(self) -> TransformationConfig:
@@ -197,9 +212,21 @@ class TransformationConfig(StrictModel):
             "trim": ("columns",),
             "empty_to_null": ("columns",),
             "replace_values": ("column", "values"),
+            "regex_replace": ("columns", "pattern", "replacement"),
             "filter": ("condition",),
             "add_literal": ("column",),
             "parse_timestamp": ("target_column", "format"),
+            "parse_date": ("source_column", "target_column", "format"),
+            "hourly_wide_to_long": (
+                "year_column",
+                "month_column",
+                "day_column",
+                "value_prefix",
+                "validity_prefix",
+                "value_column",
+                "validity_column",
+                "timestamp_column",
+            ),
             "deduplicate": ("keys", "order_by"),
             "lookup_join": ("lookup_table", "conditions", "select"),
         }
@@ -209,7 +236,13 @@ class TransformationConfig(StrictModel):
         if missing:
             raise ValueError(f"{self.type} requiere los parámetros: {', '.join(missing)}.")
 
-        list_column_transforms = {"select", "drop", "trim", "empty_to_null"}
+        list_column_transforms = {
+            "select",
+            "drop",
+            "trim",
+            "empty_to_null",
+            "regex_replace",
+        }
         mapping_column_transforms = {"rename", "cast"}
         if self.type in list_column_transforms and not isinstance(self.columns, list):
             raise ValueError(f"{self.type}.columns debe ser una lista.")
@@ -220,6 +253,19 @@ class TransformationConfig(StrictModel):
             if sources != 1:
                 raise ValueError(
                     "parse_timestamp requiere exactamente source_column o source_columns."
+                )
+        if self.type == "hourly_wide_to_long":
+            effective_hours = self.hours or 24
+            if not 1 <= effective_hours <= 24:
+                raise ValueError("hourly_wide_to_long.hours debe estar entre 1 y 24.")
+            output_columns = {
+                self.value_column,
+                self.validity_column,
+                self.timestamp_column,
+            }
+            if len(output_columns) != 3:
+                raise ValueError(
+                    "hourly_wide_to_long requiere tres columnas de salida distintas."
                 )
         if self.type == "lookup_join" and not isinstance(self.select, dict):
             raise ValueError("lookup_join.select debe ser un mapa destino: columna_lookup.")

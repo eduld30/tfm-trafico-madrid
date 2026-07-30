@@ -26,7 +26,10 @@ def test_load_known_dataset():
     )
     assert source.source == "trafico"
     assert dataset.bronze.format == "xml"
-    assert dataset.bronze.reader_options["row_tag"] == "pm"
+    assert dataset.bronze.reader_options["row_tag"] == "pms"
+    assert dataset.bronze.reader_options["record_path"] == "pm"
+    assert dataset.silver.write_strategy == "merge"
+    assert dataset.silver.business_keys == ["idelem", "fecha_hora"]
 
 
 def test_missing_dataset_has_domain_error():

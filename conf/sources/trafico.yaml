@@ -10,7 +10,7 @@ datasets:
       format: csv
       source_path: "trafico/trafico_historico"
       target_path: "trafico/trafico_historico"
-      reader_options: &csv_options
+      reader_options: &utf8_csv_options
         delimiter: ";"
         header: "true"
         encoding: "UTF-8"
@@ -21,10 +21,42 @@ datasets:
       transformations:
         - type: normalize_column_names
     silver:
-      # Pendiente de confirmar claves y esquema con una muestra real.
-      enabled: false
+      enabled: true
       target_path: "trafico/trafico_historico"
-      write_strategy: overwrite
+      write_strategy: merge
+      business_keys:
+        - id
+        - fecha_hora
+      transformations:
+        - type: parse_timestamp
+          source_column: fecha
+          target_column: fecha_hora
+          format: "yyyy-MM-dd HH:mm:ss"
+        - type: drop
+          columns:
+            - fecha
+        - type: cast
+          columns:
+            id: long
+            intensidad: double
+            ocupacion: double
+            carga: double
+            vmed: double
+            periodo_integracion: integer
+        - type: trim
+          columns:
+            - tipo_elem
+            - error
+        - type: empty_to_null
+          columns:
+            - error
+        - type: deduplicate
+          keys:
+            - id
+            - fecha_hora
+          order_by:
+            - column: _ingestion_timestamp
+              direction: desc
 
   - name: trafico_nrt
     description: "Mediciones de tráfico cercanas a tiempo real"
@@ -35,15 +67,62 @@ datasets:
       source_path: "trafico/trafico_nrt"
       target_path: "trafico/trafico_nrt"
       reader_options:
-        row_tag: "pm"
+        row_tag: "pms"
+        record_path: "pm"
+        parent_columns: "fecha_hora"
       autoloader_options: *autoloader_options
       transformations:
         - type: normalize_column_names
     silver:
-      # Pendiente de confirmar claves y formato temporal con una muestra real.
-      enabled: false
+      enabled: true
       target_path: "trafico/trafico_nrt"
-      write_strategy: overwrite
+      write_strategy: merge
+      business_keys:
+        - idelem
+        - fecha_hora
+      transformations:
+        - type: empty_to_null
+          columns:
+            - descripcion
+            - acceso_asociado
+            - intensidad_sat
+            - error
+            - subarea
+            - velocidad
+        - type: regex_replace
+          columns:
+            - st_x
+            - st_y
+          pattern: ","
+          replacement: "."
+        - type: parse_timestamp
+          source_column: fecha_hora
+          target_column: fecha_hora
+          format: "dd/MM/yyyy HH:mm:ss"
+        - type: cast
+          columns:
+            idelem: long
+            intensidad: double
+            ocupacion: double
+            carga: double
+            nivel_servicio: integer
+            intensidad_sat: double
+            velocidad: double
+            st_x: double
+            st_y: double
+        - type: trim
+          columns:
+            - descripcion
+            - acceso_asociado
+            - error
+            - subarea
+        - type: deduplicate
+          keys:
+            - idelem
+            - fecha_hora
+          order_by:
+            - column: _ingestion_timestamp
+              direction: desc
 
   - name: dim_trafico
     description: "Dimensión de puntos de medida de tráfico"
@@ -53,7 +132,11 @@ datasets:
       format: csv
       source_path: "trafico/dim_trafico"
       target_path: "trafico/dim_trafico"
-      reader_options: *csv_options
+      reader_options:
+        delimiter: ";"
+        header: "true"
+        encoding: "windows-1252"
+        mode: "PERMISSIVE"
       autoloader_options: *autoloader_options
       transformations:
         - type: normalize_column_names
@@ -61,6 +144,24 @@ datasets:
       enabled: true
       target_path: "trafico/dim_trafico"
       write_strategy: overwrite
+      transformations:
+        - type: empty_to_null
+          columns:
+            - distrito
+            - nombre
+        - type: cast
+          columns:
+            distrito: integer
+            id: long
+            utm_x: double
+            utm_y: double
+            longitud: double
+            latitud: double
+        - type: trim
+          columns:
+            - tipo_elem
+            - cod_cent
+            - nombre
 
   - name: dim_distritos
     description: "Catálogo de distritos de Madrid"
@@ -70,7 +171,7 @@ datasets:
       format: csv
       source_path: "trafico/dim_distritos"
       target_path: "trafico/dim_distritos"
-      reader_options: *csv_options
+      reader_options: *utf8_csv_options
       autoloader_options: *autoloader_options
       transformations:
         - type: normalize_column_names
@@ -78,3 +179,19 @@ datasets:
       enabled: true
       target_path: "trafico/dim_distritos"
       write_strategy: overwrite
+      transformations:
+        - type: regex_replace
+          columns:
+            - area
+          pattern: ","
+          replacement: "."
+        - type: cast
+          columns:
+            cod_dis: integer
+            area: double
+        - type: trim
+          columns:
+            - cod_dis_tx
+            - nombre
+            - distri_may
+            - distri_mt

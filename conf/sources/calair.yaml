@@ -21,9 +21,42 @@ datasets:
       transformations:
         - type: normalize_column_names
     silver:
-      enabled: false
+      enabled: true
       target_path: "calair/calair_nrt"
-      write_strategy: overwrite
+      write_strategy: merge
+      business_keys:
+        - punto_muestreo
+        - fecha_hora
+      transformations: &hourly_transformations
+        - type: hourly_wide_to_long
+          year_column: ano
+          month_column: mes
+          day_column: dia
+          value_prefix: h
+          validity_prefix: v
+          value_column: valor
+          validity_column: validez
+          timestamp_column: fecha_hora
+          hours: 24
+          hour_offset: -1
+        - type: filter
+          condition: "validez = 'V'"
+        - type: drop
+          columns:
+            - ano
+            - mes
+            - dia
+        - type: cast
+          columns:
+            estacion: integer
+            magnitud: integer
+        - type: deduplicate
+          keys:
+            - punto_muestreo
+            - fecha_hora
+          order_by:
+            - column: _ingestion_timestamp
+              direction: desc
 
   - name: calair_historico
     description: "Histórico mensual de calidad del aire con granularidad horaria"
@@ -38,9 +71,13 @@ datasets:
       transformations:
         - type: normalize_column_names
     silver:
-      enabled: false
+      enabled: true
       target_path: "calair/calair_historico"
-      write_strategy: overwrite
+      write_strategy: merge
+      business_keys:
+        - punto_muestreo
+        - fecha_hora
+      transformations: *hourly_transformations
 
   - name: dim_calair
     description: "Dimensión de estaciones de calidad del aire"
@@ -58,6 +95,56 @@ datasets:
       enabled: true
       target_path: "calair/dim_calair"
       write_strategy: overwrite
+      transformations:
+        - type: empty_to_null
+          columns:
+            - so2
+            - co
+            - pm10
+            - pm2_5
+            - o3
+            - btx
+            - via_clase
+            - via_par
+            - via_nombre
+        - type: parse_date
+          source_column: fecha_alta
+          target_column: fecha_alta
+          format: "dd/MM/yyyy"
+        - type: regex_replace
+          columns:
+            - coordenada_x_etrs89
+            - coordenada_y_etrs89
+          pattern: ","
+          replacement: "."
+        - type: cast
+          columns:
+            codigo: long
+            codigo_corto: integer
+            altitud: integer
+            cod_via: long
+            coordenada_x_etrs89: double
+            coordenada_y_etrs89: double
+            longitud: double
+            latitud: double
+        - type: trim
+          columns:
+            - estacion
+            - direccion
+            - longitud_etrs89
+            - latitud_etrs89
+            - cod_tipo
+            - nom_tipo
+            - no2
+            - so2
+            - co
+            - pm10
+            - pm2_5
+            - o3
+            - btx
+            - via_clase
+            - via_par
+            - via_nombre
 
   - name: dim_magnitudes_calair
     description: "Catálogo estático de magnitudes de calidad del aire"

@@ -99,6 +99,22 @@ def replace_values(df: Any, config: TransformationConfig, context: RunContext) -
     return df.replace(to_replace=config.values, subset=[config.column])
 
 
+def regex_replace(df: Any, config: TransformationConfig, context: RunContext) -> Any:
+    del context
+    assert isinstance(config.columns, list)
+    assert config.pattern is not None and config.replacement is not None
+    _require_columns(df, config.columns, config.type)
+    from pyspark.sql import functions as F
+
+    result = df
+    for column in config.columns:
+        result = result.withColumn(
+            column,
+            F.regexp_replace(F.col(column), config.pattern, config.replacement),
+        )
+    return result
+
+
 def filter_rows(df: Any, config: TransformationConfig, context: RunContext) -> Any:
     del context
     assert config.condition is not None
@@ -133,6 +149,106 @@ def parse_timestamp(df: Any, config: TransformationConfig, context: RunContext) 
     return df.withColumn(
         config.target_column, F.to_timestamp(source_value, config.format)
     )
+
+
+def parse_date(df: Any, config: TransformationConfig, context: RunContext) -> Any:
+    del context
+    assert config.source_column is not None
+    assert config.target_column is not None and config.format is not None
+    _require_columns(df, [config.source_column], config.type)
+    from pyspark.sql import functions as F
+
+    return df.withColumn(
+        config.target_column,
+        F.to_date(F.col(config.source_column), config.format),
+    )
+
+
+def hourly_wide_to_long(
+    df: Any, config: TransformationConfig, context: RunContext
+) -> Any:
+    """Convierte pares Hxx/Vxx diarios en observaciones horarias."""
+    del context
+    assert config.year_column is not None
+    assert config.month_column is not None
+    assert config.day_column is not None
+    assert config.value_prefix is not None
+    assert config.validity_prefix is not None
+    assert config.value_column is not None
+    assert config.validity_column is not None
+    assert config.timestamp_column is not None
+    hours = config.hours or 24
+    value_columns = [
+        f"{config.value_prefix}{hour:02d}" for hour in range(1, hours + 1)
+    ]
+    validity_columns = [
+        f"{config.validity_prefix}{hour:02d}" for hour in range(1, hours + 1)
+    ]
+    _require_columns(
+        df,
+        [
+            config.year_column,
+            config.month_column,
+            config.day_column,
+            *value_columns,
+            *validity_columns,
+        ],
+        config.type,
+    )
+    from pyspark.sql import functions as F
+
+    wide_columns = set(value_columns) | set(validity_columns)
+    base_columns = [column for column in df.columns if column not in wide_columns]
+    record_alias = "__hourly_record"
+    hour_column = "__hour_number"
+    reserved = {
+        record_alias,
+        hour_column,
+        config.value_column,
+        config.validity_column,
+        config.timestamp_column,
+    }
+    collisions = sorted(reserved.intersection(base_columns))
+    if collisions:
+        raise IngestionError(
+            "hourly_wide_to_long no puede sobrescribir columnas: "
+            + ", ".join(collisions)
+        )
+    records = [
+        F.struct(
+            F.lit(hour).alias(hour_column),
+            F.col(value_columns[hour - 1]).cast("double").alias(config.value_column),
+            F.col(validity_columns[hour - 1]).alias(config.validity_column),
+        )
+        for hour in range(1, hours + 1)
+    ]
+    result = (
+        df.select(
+            *base_columns,
+            F.explode(F.array(*records)).alias(record_alias),
+        )
+        .select(
+            *base_columns,
+            F.col(f"{record_alias}.{hour_column}").alias(hour_column),
+            F.col(f"{record_alias}.{config.value_column}").alias(config.value_column),
+            F.col(f"{record_alias}.{config.validity_column}").alias(
+                config.validity_column
+            ),
+        )
+        .withColumn(
+            config.timestamp_column,
+            F.make_timestamp(
+                F.col(config.year_column).cast("int"),
+                F.col(config.month_column).cast("int"),
+                F.col(config.day_column).cast("int"),
+                F.col(hour_column) + F.lit(config.hour_offset),
+                F.lit(0),
+                F.lit(0),
+            ),
+        )
+        .drop(hour_column)
+    )
+    return result
 
 
 def deduplicate(df: Any, config: TransformationConfig, context: RunContext) -> Any:
@@ -208,9 +324,12 @@ TRANSFORMATIONS: dict[str, TransformationFunction] = {
     "trim": trim_columns,
     "empty_to_null": empty_to_null,
     "replace_values": replace_values,
+    "regex_replace": regex_replace,
     "filter": filter_rows,
     "add_literal": add_literal,
     "parse_timestamp": parse_timestamp,
+    "parse_date": parse_date,
+    "hourly_wide_to_long": hourly_wide_to_long,
     "deduplicate": deduplicate,
     "lookup_join": lookup_join,
 }

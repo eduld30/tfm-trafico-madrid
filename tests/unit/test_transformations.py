@@ -32,9 +32,12 @@ def test_registry_contains_the_declared_initial_transformations():
         "trim",
         "empty_to_null",
         "replace_values",
+        "regex_replace",
         "filter",
         "add_literal",
         "parse_timestamp",
+        "parse_date",
+        "hourly_wide_to_long",
         "deduplicate",
         "lookup_join",
     }
@@ -53,6 +56,11 @@ def test_normalize_column_names_does_not_need_spark_actions():
 def test_normalization_preserves_technical_prefix():
     assert normalize_column_name("_rescued_data") == "_rescued_data"
     assert normalize_column_name("_Ingestion Timestamp") == "_ingestion_timestamp"
+
+
+def test_normalization_splits_camel_case():
+    assert normalize_column_name("accesoAsociado") == "acceso_asociado"
+    assert normalize_column_name("nivelServicio") == "nivel_servicio"
 
 
 def test_rename_is_simultaneous_and_preserves_values_contract():

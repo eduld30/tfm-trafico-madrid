@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -13,7 +14,8 @@ def normalize_column_name(value: str) -> str:
     """Normaliza una columna preservando el prefijo de metadatos ``_``."""
     stripped = value.strip()
     is_technical = stripped.startswith("_")
-    normalized = normalize_identifier(stripped)
+    separated_camel_case = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", stripped)
+    normalized = normalize_identifier(separated_camel_case)
     if is_technical:
         return f"_{normalized.lstrip('_')}"
     return normalized

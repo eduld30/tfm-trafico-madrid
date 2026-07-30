@@ -61,6 +61,32 @@ def test_parse_timestamp_accepts_multiple_source_columns():
     assert config.source_columns == ["fecha", "hora"]
 
 
+def test_regex_replace_requires_a_list_of_columns():
+    with pytest.raises(ValidationError, match="columns debe ser una lista"):
+        TransformationConfig(
+            type="regex_replace",
+            columns={"coordenada": "double"},
+            pattern=",",
+            replacement=".",
+        )
+
+
+def test_hourly_wide_to_long_validates_hour_range():
+    with pytest.raises(ValidationError, match="entre 1 y 24"):
+        TransformationConfig(
+            type="hourly_wide_to_long",
+            year_column="ano",
+            month_column="mes",
+            day_column="dia",
+            value_prefix="h",
+            validity_prefix="v",
+            value_column="valor",
+            validity_column="validez",
+            timestamp_column="fecha_hora",
+            hours=25,
+        )
+
+
 def test_source_rejects_duplicate_datasets():
     dataset = DatasetConfig(
         name="dataset",
