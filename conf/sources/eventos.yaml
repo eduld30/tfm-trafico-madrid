@@ -1,0 +1,26 @@
+source: eventos
+enabled: true
+
+datasets:
+  - name: eventos_culturales
+    description: "Ventana móvil de eventos culturales de los próximos 100 días"
+    enabled: true
+    bronze:
+      enabled: true
+      format: csv
+      source_path: "eventos/eventos_culturales"
+      target_path: "eventos/eventos_culturales"
+      reader_options:
+        delimiter: ";"
+        header: "true"
+        encoding: "UTF-8"
+        mode: "PERMISSIVE"
+      autoloader_options:
+        schema_evolution_mode: addNewColumns
+        rescued_data_column: _rescued_data
+      transformations:
+        - type: normalize_column_names
+    silver:
+      enabled: true
+      target_path: "eventos/eventos_culturales"
+      write_strategy: overwrite

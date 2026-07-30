@@ -1,0 +1,80 @@
+source: trafico
+enabled: true
+
+datasets:
+  - name: historico_trafico
+    description: "Histórico mensual de tráfico desde 2013"
+    enabled: true
+    bronze:
+      enabled: true
+      format: csv
+      source_path: "trafico/historico_trafico"
+      target_path: "trafico/historico_trafico"
+      reader_options: &csv_options
+        delimiter: ";"
+        header: "true"
+        encoding: "UTF-8"
+        mode: "PERMISSIVE"
+      autoloader_options: &autoloader_options
+        schema_evolution_mode: addNewColumns
+        rescued_data_column: _rescued_data
+      transformations:
+        - type: normalize_column_names
+    silver:
+      # Pendiente de confirmar claves y esquema con una muestra real.
+      enabled: false
+      target_path: "trafico/historico_trafico"
+      write_strategy: overwrite
+
+  - name: trafico_nrt
+    description: "Mediciones de tráfico cercanas a tiempo real"
+    enabled: true
+    bronze:
+      enabled: true
+      format: xml
+      source_path: "trafico/trafico_nrt"
+      target_path: "trafico/trafico_nrt"
+      reader_options:
+        row_tag: "pm"
+      autoloader_options: *autoloader_options
+      transformations:
+        - type: normalize_column_names
+    silver:
+      # Pendiente de confirmar claves y formato temporal con una muestra real.
+      enabled: false
+      target_path: "trafico/trafico_nrt"
+      write_strategy: overwrite
+
+  - name: dim_trafico
+    description: "Dimensión de puntos de medida de tráfico"
+    enabled: true
+    bronze:
+      enabled: true
+      format: csv
+      source_path: "trafico/dim_trafico"
+      target_path: "trafico/dim_trafico"
+      reader_options: *csv_options
+      autoloader_options: *autoloader_options
+      transformations:
+        - type: normalize_column_names
+    silver:
+      enabled: true
+      target_path: "trafico/dim_trafico"
+      write_strategy: overwrite
+
+  - name: dim_distritos
+    description: "Catálogo de distritos de Madrid"
+    enabled: true
+    bronze:
+      enabled: true
+      format: csv
+      source_path: "trafico/dim_distritos"
+      target_path: "trafico/dim_distritos"
+      reader_options: *csv_options
+      autoloader_options: *autoloader_options
+      transformations:
+        - type: normalize_column_names
+    silver:
+      enabled: true
+      target_path: "trafico/dim_distritos"
+      write_strategy: overwrite

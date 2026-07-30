@@ -1,0 +1,27 @@
+source: accidentes
+enabled: true
+
+datasets:
+  - name: historico_accidentes
+    description: "Histórico mensual de accidentes desde 2019"
+    enabled: true
+    bronze:
+      enabled: true
+      format: csv
+      source_path: "accidentes/historico_accidentes"
+      target_path: "accidentes/historico_accidentes"
+      reader_options:
+        delimiter: ";"
+        header: "true"
+        encoding: "UTF-8"
+        mode: "PERMISSIVE"
+      autoloader_options:
+        schema_evolution_mode: addNewColumns
+        rescued_data_column: _rescued_data
+      transformations:
+        - type: normalize_column_names
+    silver:
+      # Pendiente de confirmar la clave de accidente con una muestra real.
+      enabled: false
+      target_path: "accidentes/historico_accidentes"
+      write_strategy: overwrite

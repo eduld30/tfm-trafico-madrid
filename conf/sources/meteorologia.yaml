@@ -1,0 +1,77 @@
+source: meteorologia
+enabled: true
+
+datasets:
+  - name: meteo_nrt
+    description: "Meteorología cercana a tiempo real"
+    enabled: true
+    bronze:
+      enabled: true
+      format: csv
+      source_path: "meteorologia/meteo_nrt"
+      target_path: "meteorologia/meteo_nrt"
+      reader_options: &csv_options
+        delimiter: ";"
+        header: "true"
+        encoding: "UTF-8"
+        mode: "PERMISSIVE"
+      autoloader_options: &autoloader_options
+        schema_evolution_mode: addNewColumns
+        rescued_data_column: _rescued_data
+      transformations:
+        - type: normalize_column_names
+    silver:
+      enabled: false
+      target_path: "meteorologia/meteo_nrt"
+      write_strategy: overwrite
+
+  - name: meteo_historico
+    description: "Histórico mensual de meteorología con granularidad horaria"
+    enabled: true
+    bronze:
+      enabled: true
+      format: csv
+      source_path: "meteorologia/meteo_historico"
+      target_path: "meteorologia/meteo_historico"
+      reader_options: *csv_options
+      autoloader_options: *autoloader_options
+      transformations:
+        - type: normalize_column_names
+    silver:
+      enabled: false
+      target_path: "meteorologia/meteo_historico"
+      write_strategy: overwrite
+
+  - name: dim_meteo
+    description: "Dimensión de estaciones meteorológicas"
+    enabled: true
+    bronze:
+      enabled: true
+      format: csv
+      source_path: "meteorologia/dim_meteo"
+      target_path: "meteorologia/dim_meteo"
+      reader_options: *csv_options
+      autoloader_options: *autoloader_options
+      transformations:
+        - type: normalize_column_names
+    silver:
+      enabled: true
+      target_path: "meteorologia/dim_meteo"
+      write_strategy: overwrite
+
+  - name: dim_magnitudes_meteo
+    description: "Catálogo estático de magnitudes meteorológicas"
+    enabled: true
+    bronze:
+      enabled: true
+      format: csv
+      source_path: "meteorologia/dim_magnitudes_meteo"
+      target_path: "meteorologia/dim_magnitudes_meteo"
+      reader_options: *csv_options
+      autoloader_options: *autoloader_options
+      transformations:
+        - type: normalize_column_names
+    silver:
+      enabled: true
+      target_path: "meteorologia/dim_magnitudes_meteo"
+      write_strategy: overwrite
