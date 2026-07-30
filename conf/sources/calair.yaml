@@ -1,15 +1,15 @@
-source: calidad_aire
+source: calair
 enabled: true
 
 datasets:
-  - name: calidad_aire_nrt
+  - name: calair_nrt
     description: "Calidad del aire cercana a tiempo real"
     enabled: true
     bronze:
       enabled: true
       format: csv
-      source_path: "calidad_aire/calidad_aire_nrt"
-      target_path: "calidad_aire/calidad_aire_nrt"
+      source_path: "calair/calair_nrt"
+      target_path: "calair/calair_nrt"
       reader_options: &csv_options
         delimiter: ";"
         header: "true"
@@ -22,24 +22,24 @@ datasets:
         - type: normalize_column_names
     silver:
       enabled: false
-      target_path: "calidad_aire/calidad_aire_nrt"
+      target_path: "calair/calair_nrt"
       write_strategy: overwrite
 
-  - name: calidad_aire_historico
+  - name: calair_historico
     description: "Histórico mensual de calidad del aire con granularidad horaria"
     enabled: true
     bronze:
       enabled: true
       format: csv
-      source_path: "calidad_aire/calidad_aire_historico"
-      target_path: "calidad_aire/calidad_aire_historico"
+      source_path: "calair/calair_historico"
+      target_path: "calair/calair_historico"
       reader_options: *csv_options
       autoloader_options: *autoloader_options
       transformations:
         - type: normalize_column_names
     silver:
       enabled: false
-      target_path: "calidad_aire/calidad_aire_historico"
+      target_path: "calair/calair_historico"
       write_strategy: overwrite
 
   - name: dim_calair
@@ -48,30 +48,30 @@ datasets:
     bronze:
       enabled: true
       format: csv
-      source_path: "calidad_aire/dim_calair"
-      target_path: "calidad_aire/dim_calair"
+      source_path: "calair/dim_calair"
+      target_path: "calair/dim_calair"
       reader_options: *csv_options
       autoloader_options: *autoloader_options
       transformations:
         - type: normalize_column_names
     silver:
       enabled: true
-      target_path: "calidad_aire/dim_calair"
+      target_path: "calair/dim_calair"
       write_strategy: overwrite
 
   - name: dim_magnitudes_calair
     description: "Catálogo estático de magnitudes de calidad del aire"
-    enabled: true
+    enabled: false
     bronze:
       enabled: true
       format: csv
-      source_path: "calidad_aire/dim_magnitudes_calair"
-      target_path: "calidad_aire/dim_magnitudes_calair"
+      source_path: "calair/dim_magnitudes_calair"
+      target_path: "calair/dim_magnitudes_calair"
       reader_options: *csv_options
       autoloader_options: *autoloader_options
       transformations:
         - type: normalize_column_names
     silver:
       enabled: true
-      target_path: "calidad_aire/dim_magnitudes_calair"
+      target_path: "calair/dim_magnitudes_calair"
       write_strategy: overwrite

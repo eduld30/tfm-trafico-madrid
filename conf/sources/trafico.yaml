@@ -2,14 +2,14 @@ source: trafico
 enabled: true
 
 datasets:
-  - name: historico_trafico
+  - name: trafico_historico
     description: "Histórico mensual de tráfico desde 2013"
     enabled: true
     bronze:
       enabled: true
       format: csv
-      source_path: "trafico/historico_trafico"
-      target_path: "trafico/historico_trafico"
+      source_path: "trafico/trafico_historico"
+      target_path: "trafico/trafico_historico"
       reader_options: &csv_options
         delimiter: ";"
         header: "true"
@@ -23,7 +23,7 @@ datasets:
     silver:
       # Pendiente de confirmar claves y esquema con una muestra real.
       enabled: false
-      target_path: "trafico/historico_trafico"
+      target_path: "trafico/trafico_historico"
       write_strategy: overwrite
 
   - name: trafico_nrt
