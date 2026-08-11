@@ -1,0 +1,18 @@
+{
+    "Microsoft.DataFactory/factories/linkedServices": {
+        "AzureBlobFS": {
+            "properties": {
+                "typeProperties": {
+                    "url": "-:storageAccountUrl:string"
+                }
+            }
+        },
+        "AzureKeyVault": {
+            "properties": {
+                "typeProperties": {
+                    "baseUrl": "-:keyVaultBaseUrl:string"
+                }
+            }
+        }
+    }
+}
