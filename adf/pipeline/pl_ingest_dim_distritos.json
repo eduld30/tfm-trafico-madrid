@@ -1,0 +1,57 @@
+{
+	"name": "pl_ingest_dim_distritos",
+	"properties": {
+		"activities": [
+			{
+				"name": "copy_dim_distritos",
+				"type": "Copy",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.00:10:00",
+					"retryIntervalInSeconds": 30
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "BinarySource",
+						"storeSettings": {
+							"type": "HttpReadSettings",
+							"relativeUrl": "/dataset/300497-0-distritos-municipales-madrid/resource/300497-3-distritos-municipales-madrid/download/300497-3-distritos-municipales-madrid.csv",
+							"requestMethod": "GET"
+						}
+					},
+					"sink": {
+						"type": "BinarySink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						},
+						"copyBehavior": "PreserveHierarchy"
+					},
+					"enableStaging": false
+				},
+				"inputs": [
+					{
+						"referenceName": "ds_http_trafico_hist",
+						"type": "DatasetReference"
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "ds_adls_landing",
+						"type": "DatasetReference",
+						"parameters": {
+							"p_directory": {
+								"value": "trafico/dim_distritos",
+								"type": "Expression"
+							},
+							"p_filename": "dim_distritos_@{formatDateTime(utcNow(),'yyyyMMdd')}.csv"
+						}
+					}
+				]
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2026-07-30T19:18:20Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

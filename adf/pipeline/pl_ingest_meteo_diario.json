@@ -1,0 +1,57 @@
+{
+	"name": "pl_ingest_meteo_diario",
+	"properties": {
+		"activities": [
+			{
+				"name": "copy_meteo_diario",
+				"type": "Copy",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.00:10:00",
+					"retryIntervalInSeconds": 30
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "BinarySource",
+						"storeSettings": {
+							"type": "HttpReadSettings",
+							"relativeUrl": "/dataset/300351-0-meteorologicos-diarios/resource/300351-0-meteorologicos-diarios-csv/download/300351-0-meteorologicos-diarios-csv.csv",
+							"requestMethod": "GET"
+						}
+					},
+					"sink": {
+						"type": "BinarySink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						},
+						"copyBehavior": "PreserveHierarchy"
+					},
+					"enableStaging": false
+				},
+				"inputs": [
+					{
+						"referenceName": "ds_http_meteo_nrt",
+						"type": "DatasetReference"
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "ds_adls_landing",
+						"type": "DatasetReference",
+						"parameters": {
+							"p_directory": {
+								"value": "@concat('meteo/meteo_diario/',formatDateTime(utcNow(),'yyyy'),'/',formatDateTime(utcNow(),'MM'))",
+								"type": "Expression"
+							},
+							"p_filename": "meteo_diario_@{formatDateTime(utcNow(),'yyyyMM')}.csv"
+						}
+					}
+				]
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2026-07-30T19:18:20Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

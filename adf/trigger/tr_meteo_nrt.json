@@ -1,0 +1,24 @@
+{
+	"name": "tr_meteo_nrt",
+	"properties": {
+		"annotations": [],
+		"runtimeState": "Stopped",
+		"pipelines": [
+			{
+				"pipelineReference": {
+					"referenceName": "pl_ingest_meteo_nrt",
+					"type": "PipelineReference"
+				}
+			}
+		],
+		"type": "ScheduleTrigger",
+		"typeProperties": {
+			"recurrence": {
+				"frequency": "Minute",
+				"interval": 10,
+				"startTime": "2026-07-26T15:23:00",
+				"timeZone": "Romance Standard Time"
+			}
+		}
+	}
+}

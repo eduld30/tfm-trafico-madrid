@@ -1,0 +1,17 @@
+{
+	"name": "ds_http_trafico_hist",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "ls_http_ayuntamiento",
+			"type": "LinkedServiceReference"
+		},
+		"annotations": [],
+		"type": "Binary",
+		"typeProperties": {
+			"location": {
+				"type": "HttpServerLocation"
+			}
+		}
+	},
+	"type": "Microsoft.DataFactory/factories/datasets"
+}
