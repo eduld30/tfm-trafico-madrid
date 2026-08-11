@@ -1,0 +1,57 @@
+{
+	"name": "pl_ingest_trafico_hist",
+	"properties": {
+		"activities": [
+			{
+				"name": "copy_trafico_hist",
+				"type": "Copy",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.00:10:00",
+					"retryIntervalInSeconds": 30
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "BinarySource",
+						"storeSettings": {
+							"type": "HttpReadSettings",
+							"relativeUrl": "/dataset/208627-0-transporte-ptomedida-historico/resource/208627-157-transporte-ptomedida-historico/download/208627-157-transporte-ptomedida-historico.zip",
+							"requestMethod": "GET"
+						}
+					},
+					"sink": {
+						"type": "BinarySink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						},
+						"copyBehavior": "PreserveHierarchy"
+					},
+					"enableStaging": false
+				},
+				"inputs": [
+					{
+						"referenceName": "ds_http_trafico_hist",
+						"type": "DatasetReference"
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "ds_adls_landing",
+						"type": "DatasetReference",
+						"parameters": {
+							"p_directory": {
+								"value": "@concat('trafico/trafico_hist/',formatDateTime(utcNow(),'yyyy'),'/',formatDateTime(utcNow(),'MM'))",
+								"type": "Expression"
+							},
+							"p_filename": "trafico_hist_@{formatDateTime(utcNow(),'yyyyMM')}.zip"
+						}
+					}
+				]
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2026-07-30T19:18:20Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

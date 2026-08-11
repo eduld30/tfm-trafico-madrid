@@ -1,0 +1,57 @@
+{
+	"name": "pl_ingest_meteo_nrt",
+	"properties": {
+		"activities": [
+			{
+				"name": "copy_meteo_nrt",
+				"type": "Copy",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.00:10:00",
+					"retryIntervalInSeconds": 30
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "BinarySource",
+						"storeSettings": {
+							"type": "HttpReadSettings",
+							"relativeUrl": "/dataset/300392-0-meteorologia-tiempo-real/resource/300392-2-meteorologia-tiempo-real/download/300392-2-meteorologia-tiempo-real.csv",
+							"requestMethod": "GET"
+						}
+					},
+					"sink": {
+						"type": "BinarySink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						},
+						"copyBehavior": "PreserveHierarchy"
+					},
+					"enableStaging": false
+				},
+				"inputs": [
+					{
+						"referenceName": "ds_http_meteo_nrt",
+						"type": "DatasetReference"
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "ds_adls_landing",
+						"type": "DatasetReference",
+						"parameters": {
+							"p_directory": {
+								"value": "@concat('meteo/meteo_nrt/',formatDateTime(utcNow(),'yyyy'),'/',formatDateTime(utcNow(),'MM'),'/',formatDateTime(utcNow(),'dd'),'/',formatDateTime(utcNow(),'HH'))",
+								"type": "Expression"
+							},
+							"p_filename": "meteo_nrt_@{formatDateTime(utcNow(),'yyyyMMdd_HHmm')}.csv"
+						}
+					}
+				]
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2026-07-30T19:18:20Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

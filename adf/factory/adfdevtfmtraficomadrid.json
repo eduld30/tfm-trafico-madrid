@@ -1,0 +1,15 @@
+{
+	"name": "adfdevtfmtraficomadrid",
+	"properties": {
+		"trustModeClaimForMi": {
+			"value": "Disabled",
+			"editable": true
+		}
+	},
+	"location": "swedencentral",
+	"identity": {
+		"type": "SystemAssigned",
+		"principalId": "612302f8-f6c7-49f4-aabc-d51015ed0b65",
+		"tenantId": "2b079dc7-e2ea-45bc-9182-0fde14b549b1"
+	}
+}

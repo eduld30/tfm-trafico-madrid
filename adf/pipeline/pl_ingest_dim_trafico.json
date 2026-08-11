@@ -1,0 +1,57 @@
+{
+	"name": "pl_ingest_dim_trafico",
+	"properties": {
+		"activities": [
+			{
+				"name": "copy_dim_trafico",
+				"type": "Copy",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.00:10:00",
+					"retryIntervalInSeconds": 30
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "BinarySource",
+						"storeSettings": {
+							"type": "HttpReadSettings",
+							"relativeUrl": "/dataset/202468-0-intensidad-trafico/resource/202468-297-intensidad-trafico/download/202468-297-intensidad-trafico.csv",
+							"requestMethod": "GET"
+						}
+					},
+					"sink": {
+						"type": "BinarySink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						},
+						"copyBehavior": "PreserveHierarchy"
+					},
+					"enableStaging": false
+				},
+				"inputs": [
+					{
+						"referenceName": "ds_http_trafico_hist",
+						"type": "DatasetReference"
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "ds_adls_landing",
+						"type": "DatasetReference",
+						"parameters": {
+							"p_directory": {
+								"value": "trafico/dim_trafico",
+								"type": "Expression"
+							},
+							"p_filename": "dim_trafico_@{formatDateTime(utcNow(),'yyyyMMdd')}.csv"
+						}
+					}
+				]
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2026-07-30T19:18:20Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

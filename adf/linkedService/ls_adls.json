@@ -1,0 +1,11 @@
+{
+	"name": "ls_adls",
+	"type": "Microsoft.DataFactory/factories/linkedservices",
+	"properties": {
+		"annotations": [],
+		"type": "AzureBlobFS",
+		"typeProperties": {
+			"url": "https://stadevtfmtraficomadrid.dfs.core.windows.net/"
+		}
+	}
+}
