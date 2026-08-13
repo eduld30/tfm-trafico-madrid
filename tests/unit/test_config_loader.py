@@ -56,6 +56,43 @@ def test_trafico_nrt_filters_coordinates_outside_madrid():
     )
 
 
+@pytest.mark.parametrize(
+    ("dataset_name", "source_key"),
+    [("trafico_nrt", "idelem"), ("trafico_historico", "id")],
+)
+def test_enriches_with_dim_trafico_after_cast(dataset_name, source_key):
+    _, dataset = ConfigLoader(CONFIG_ROOT).load_dataset("trafico", dataset_name)
+    joins = [
+        transformation
+        for transformation in dataset.silver.transformations
+        if transformation.type == "lookup_join"
+    ]
+    assert len(joins) == 1
+    join = joins[0]
+    assert join.lookup_table.layer == "silver"
+    assert join.lookup_table.source == "trafico"
+    assert join.lookup_table.dataset == "dim_trafico"
+    assert join.join_type == "left"
+    assert join.conditions == {source_key: "id"}
+    assert join.select == {
+        "distrito": "distrito",
+        "latitud": "latitud",
+        "longitud": "longitud",
+    }
+
+    cast_step = next(
+        transformation
+        for transformation in dataset.silver.transformations
+        if transformation.type == "cast"
+    )
+    join_index = dataset.silver.transformations.index(join)
+    cast_index = dataset.silver.transformations.index(cast_step)
+    assert cast_index < join_index, (
+        "el lookup_join debe ir después del cast para que la clave "
+        "de unión ya sea long, como id en dim_trafico"
+    )
+
+
 def test_missing_dataset_has_domain_error():
     with pytest.raises(DatasetNotFoundError, match="no_existe"):
         ConfigLoader(CONFIG_ROOT).load_dataset("trafico", "no_existe")
