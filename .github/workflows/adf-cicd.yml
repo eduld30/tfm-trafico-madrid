@@ -14,14 +14,22 @@ on:
       - ".github/workflows/adf-cicd.yml"
       - "package.json"
   workflow_dispatch:
+    inputs:
+      environment:
+        description: "Entorno al que desplegar"
+        required: true
+        type: choice
+        options:
+          - dev
+          - pro
 
 permissions:
   id-token: write # necesario para el login OIDC contra Azure (sin secrets de larga duración)
   contents: read
 
 jobs:
-  # Valida los recursos ADF y genera el ARM template.
-  # Se ejecuta siempre (PRs y pushes), pero solo despliega en push a develop/main.
+  # Valida los recursos ADF y genera el ARM template. No toca Azure.
+  # Se ejecuta en PRs y pushes solo como comprobación; el deploy real es manual (workflow_dispatch).
   build:
     runs-on: ubuntu-latest
     steps:
@@ -52,10 +60,10 @@ jobs:
           name: adf-arm-template
           path: ArmTemplateOutput
 
-  # Despliega a dev cuando se hace push/merge a develop.
+  # Despliega a dev solo cuando se lanza manualmente desde Actions ("Run workflow" -> environment: dev).
   deploy_dev:
     needs: build
-    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'dev'
     runs-on: ubuntu-latest
     environment: dev
     steps:
@@ -106,10 +114,10 @@ jobs:
             -predeployment $false
             -deleteDeployment $true
 
-  # Despliega a pro cuando se hace push/merge a main.
+  # Despliega a pro solo cuando se lanza manualmente desde Actions ("Run workflow" -> environment: pro).
   deploy_pro:
     needs: build
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'pro'
     runs-on: ubuntu-latest
     environment: production
     steps:
