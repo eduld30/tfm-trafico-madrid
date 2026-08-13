@@ -32,6 +32,30 @@ def test_load_known_dataset():
     assert dataset.silver.business_keys == ["idelem", "fecha_hora"]
 
 
+def test_trafico_nrt_filters_coordinates_outside_madrid():
+    _, dataset = ConfigLoader(CONFIG_ROOT).load_dataset("trafico", "trafico_nrt")
+    filters = [
+        transformation
+        for transformation in dataset.silver.transformations
+        if transformation.type == "filter"
+    ]
+    assert len(filters) == 1
+    condition = filters[0].condition
+    assert "st_x" in condition
+    assert "st_y" in condition
+
+    cast_step = next(
+        transformation
+        for transformation in dataset.silver.transformations
+        if transformation.type == "cast"
+    )
+    filter_index = dataset.silver.transformations.index(filters[0])
+    cast_index = dataset.silver.transformations.index(cast_step)
+    assert cast_index < filter_index, (
+        "el filtro de coordenadas debe ir después del cast a double"
+    )
+
+
 def test_missing_dataset_has_domain_error():
     with pytest.raises(DatasetNotFoundError, match="no_existe"):
         ConfigLoader(CONFIG_ROOT).load_dataset("trafico", "no_existe")

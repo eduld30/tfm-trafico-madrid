@@ -110,6 +110,11 @@ datasets:
             velocidad: double
             st_x: double
             st_y: double
+        - type: filter
+          # st_x/st_y en ETRS89 huso 30N (metros). Rango con margen sobre el
+          # término municipal de Madrid; descarta coordenadas anómalas (nulas,
+          # cero o fuera de la Comunidad de Madrid).
+          condition: "st_x BETWEEN 415000 AND 455000 AND st_y BETWEEN 4455000 AND 4495000"
         - type: trim
           columns:
             - descripcion
