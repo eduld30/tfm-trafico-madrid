@@ -43,6 +43,18 @@ datasets:
             carga: double
             vmed: double
             periodo_integracion: integer
+        - type: lookup_join
+          lookup_table:
+            layer: silver
+            source: trafico
+            dataset: dim_trafico
+          join_type: left
+          conditions:
+            id: id
+          select:
+            distrito: distrito
+            latitud: latitud
+            longitud: longitud
         - type: trim
           columns:
             - tipo_elem
@@ -115,6 +127,18 @@ datasets:
           # término municipal de Madrid; descarta coordenadas anómalas (nulas,
           # cero o fuera de la Comunidad de Madrid).
           condition: "st_x BETWEEN 415000 AND 455000 AND st_y BETWEEN 4455000 AND 4495000"
+        - type: lookup_join
+          lookup_table:
+            layer: silver
+            source: trafico
+            dataset: dim_trafico
+          join_type: left
+          conditions:
+            idelem: id
+          select:
+            distrito: distrito
+            latitud: latitud
+            longitud: longitud
         - type: trim
           columns:
             - descripcion
