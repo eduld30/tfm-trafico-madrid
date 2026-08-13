@@ -224,3 +224,12 @@ datasets:
             - nombre
             - distri_may
             - distri_mt
+        - type: strip_accents
+          columns:
+            - distri_may
+        - type: upper
+          # distri_may es la clave de cruce para normalizar el distrito de
+          # accidentes/eventos: se fuerza mayúsculas y sin tildes en origen
+          # para no depender de que el CSV del Ayuntamiento ya venga así.
+          columns:
+            - distri_may

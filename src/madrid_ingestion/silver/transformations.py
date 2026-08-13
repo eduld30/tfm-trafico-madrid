@@ -77,6 +77,32 @@ def trim_columns(df: Any, config: TransformationConfig, context: RunContext) -> 
     return result
 
 
+def upper_columns(df: Any, config: TransformationConfig, context: RunContext) -> Any:
+    del context
+    assert isinstance(config.columns, list)
+    _require_columns(df, config.columns, config.type)
+    from pyspark.sql import functions as F
+
+    result = df
+    for column in config.columns:
+        result = result.withColumn(column, F.upper(F.col(column)))
+    return result
+
+
+def strip_accents(df: Any, config: TransformationConfig, context: RunContext) -> Any:
+    del context
+    assert isinstance(config.columns, list)
+    _require_columns(df, config.columns, config.type)
+    from pyspark.sql import functions as F
+
+    accented = "áéíóúÁÉÍÓÚñÑüÜ"
+    plain = "aeiouAEIOUnNuU"
+    result = df
+    for column in config.columns:
+        result = result.withColumn(column, F.translate(F.col(column), accented, plain))
+    return result
+
+
 def empty_to_null(df: Any, config: TransformationConfig, context: RunContext) -> Any:
     del context
     assert isinstance(config.columns, list)
@@ -322,6 +348,8 @@ TRANSFORMATIONS: dict[str, TransformationFunction] = {
     "drop": drop_columns,
     "cast": cast_columns,
     "trim": trim_columns,
+    "upper": upper_columns,
+    "strip_accents": strip_accents,
     "empty_to_null": empty_to_null,
     "replace_values": replace_values,
     "regex_replace": regex_replace,

@@ -30,6 +30,8 @@ def test_registry_contains_the_declared_initial_transformations():
         "drop",
         "cast",
         "trim",
+        "upper",
+        "strip_accents",
         "empty_to_null",
         "replace_values",
         "regex_replace",

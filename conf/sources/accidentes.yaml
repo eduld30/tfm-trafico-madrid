@@ -73,6 +73,19 @@ datasets:
             coordenada_x_utm: double
             coordenada_y_utm: double
             positiva_droga: integer
+        - type: lookup_join
+          # cod_distrito ya es el código oficial de distrito: se cruza por
+          # número (no por el texto libre "distrito") para evitar problemas
+          # de mayúsculas/tildes y obtener el nombre estandarizado.
+          lookup_table:
+            layer: silver
+            source: trafico
+            dataset: dim_distritos
+          join_type: left
+          conditions:
+            cod_distrito: cod_dis
+          select:
+            distrito_normalizado: nombre
         - type: trim
           columns:
             - num_expediente

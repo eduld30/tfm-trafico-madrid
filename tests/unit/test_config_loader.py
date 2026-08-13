@@ -93,6 +93,77 @@ def test_enriches_with_dim_trafico_after_cast(dataset_name, source_key):
     )
 
 
+def test_accidentes_normalizes_distrito_by_numeric_code():
+    _, dataset = ConfigLoader(CONFIG_ROOT).load_dataset(
+        "accidentes", "accidentes_historico"
+    )
+    joins = [
+        transformation
+        for transformation in dataset.silver.transformations
+        if transformation.type == "lookup_join"
+    ]
+    assert len(joins) == 1
+    join = joins[0]
+    assert join.lookup_table.source == "trafico"
+    assert join.lookup_table.dataset == "dim_distritos"
+    assert join.join_type == "left"
+    assert join.conditions == {"cod_distrito": "cod_dis"}
+    assert join.select == {"distrito_normalizado": "nombre"}
+
+    cast_step = next(
+        transformation
+        for transformation in dataset.silver.transformations
+        if transformation.type == "cast"
+    )
+    join_index = dataset.silver.transformations.index(join)
+    cast_index = dataset.silver.transformations.index(cast_step)
+    assert cast_index < join_index, (
+        "el lookup_join debe ir después del cast de cod_distrito a integer"
+    )
+
+
+def test_eventos_normalizes_distrito_by_uppercased_text():
+    _, dataset = ConfigLoader(CONFIG_ROOT).load_dataset(
+        "eventos", "eventos_culturales"
+    )
+    transformations = dataset.silver.transformations
+    accent_steps = [t for t in transformations if t.type == "strip_accents"]
+    upper_steps = [t for t in transformations if t.type == "upper"]
+    join_steps = [t for t in transformations if t.type == "lookup_join"]
+    assert len(accent_steps) == 1
+    assert accent_steps[0].columns == ["distrito_instalacion"]
+    assert len(upper_steps) == 1
+    assert upper_steps[0].columns == ["distrito_instalacion"]
+    assert len(join_steps) == 1
+    join = join_steps[0]
+    assert join.lookup_table.source == "trafico"
+    assert join.lookup_table.dataset == "dim_distritos"
+    assert join.conditions == {"distrito_instalacion": "distri_may"}
+    assert join.select == {
+        "distrito_normalizado": "nombre",
+        "distrito_cod": "cod_dis",
+    }
+
+    accent_index = transformations.index(accent_steps[0])
+    upper_index = transformations.index(upper_steps[0])
+    join_index = transformations.index(join)
+    assert accent_index < join_index and upper_index < join_index, (
+        "distrito_instalacion debe normalizarse (sin tildes, mayúsculas) "
+        "antes de cruzarlo con distri_may"
+    )
+
+
+def test_dim_distritos_normalizes_join_key_in_source():
+    _, dataset = ConfigLoader(CONFIG_ROOT).load_dataset("trafico", "dim_distritos")
+    transformations = dataset.silver.transformations
+    accent_steps = [t for t in transformations if t.type == "strip_accents"]
+    upper_steps = [t for t in transformations if t.type == "upper"]
+    assert len(accent_steps) == 1
+    assert accent_steps[0].columns == ["distri_may"]
+    assert len(upper_steps) == 1
+    assert upper_steps[0].columns == ["distri_may"]
+
+
 def test_missing_dataset_has_domain_error():
     with pytest.raises(DatasetNotFoundError, match="no_existe"):
         ConfigLoader(CONFIG_ROOT).load_dataset("trafico", "no_existe")

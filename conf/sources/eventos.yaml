@@ -79,3 +79,23 @@ datasets:
             - codigo_postal_instalacion
             - tipo
             - audiencia
+        - type: strip_accents
+          columns:
+            - distrito_instalacion
+        - type: upper
+          # distrito_instalacion llega como texto libre (p. ej. "Centro");
+          # se normaliza a mayúsculas y sin tildes para cruzar con
+          # distri_may de dim_distritos, que sigue esa misma convención.
+          columns:
+            - distrito_instalacion
+        - type: lookup_join
+          lookup_table:
+            layer: silver
+            source: trafico
+            dataset: dim_distritos
+          join_type: left
+          conditions:
+            distrito_instalacion: distri_may
+          select:
+            distrito_normalizado: nombre
+            distrito_cod: cod_dis
