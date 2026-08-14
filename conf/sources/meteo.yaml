@@ -52,6 +52,20 @@ datasets:
           columns:
             estacion: integer
             magnitud: integer
+        - type: lookup_join
+          # estacion coincide con dim_meteo_distrito.codigo_corto (el nombre
+          # descriptivo de la estación vive en dim_meteo.estacion, un campo
+          # distinto). dim_meteo_distrito la genera notebooks/dim_distrito_geo.py.
+          lookup_table:
+            layer: silver
+            source: meteo
+            dataset: dim_meteo_distrito
+          join_type: left
+          conditions:
+            estacion: codigo_corto
+          select:
+            distrito_cod: distrito_cod
+            distrito_nombre: distrito_nombre
         - type: deduplicate
           keys:
             - estacion

@@ -164,6 +164,39 @@ def test_dim_distritos_normalizes_join_key_in_source():
     assert upper_steps[0].columns == ["distri_may"]
 
 
+@pytest.mark.parametrize(
+    ("source", "dataset_name", "lookup_dataset"),
+    [
+        ("meteo", "meteo_nrt", "dim_meteo_distrito"),
+        ("meteo", "meteo_historico", "dim_meteo_distrito"),
+        ("calair", "calair_nrt", "dim_calair_distrito"),
+        ("calair", "calair_historico", "dim_calair_distrito"),
+    ],
+)
+def test_enriches_with_distrito_dimension_after_cast(source, dataset_name, lookup_dataset):
+    _, dataset = ConfigLoader(CONFIG_ROOT).load_dataset(source, dataset_name)
+    transformations = dataset.silver.transformations
+    joins = [t for t in transformations if t.type == "lookup_join"]
+    assert len(joins) == 1
+    join = joins[0]
+    assert join.lookup_table.layer == "silver"
+    assert join.lookup_table.source == source
+    assert join.lookup_table.dataset == lookup_dataset
+    assert join.join_type == "left"
+    assert join.conditions == {"estacion": "codigo_corto"}
+    assert join.select == {
+        "distrito_cod": "distrito_cod",
+        "distrito_nombre": "distrito_nombre",
+    }
+
+    cast_step = next(t for t in transformations if t.type == "cast")
+    join_index = transformations.index(join)
+    cast_index = transformations.index(cast_step)
+    assert cast_index < join_index, (
+        "el lookup_join debe ir después del cast de estacion a integer"
+    )
+
+
 def test_missing_dataset_has_domain_error():
     with pytest.raises(DatasetNotFoundError, match="no_existe"):
         ConfigLoader(CONFIG_ROOT).load_dataset("trafico", "no_existe")
