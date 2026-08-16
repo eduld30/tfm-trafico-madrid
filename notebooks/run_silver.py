@@ -27,6 +27,10 @@
 
 # COMMAND ----------
 
+# MAGIC %pip install pydantic
+
+# COMMAND ----------
+
 dbutils.widgets.text("environment", "dev", "Entorno")
 dbutils.widgets.text(
     "repo_root",

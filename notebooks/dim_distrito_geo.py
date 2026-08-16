@@ -22,7 +22,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install shapely
+# MAGIC %pip install shapely pydantic
 
 # COMMAND ----------
 
