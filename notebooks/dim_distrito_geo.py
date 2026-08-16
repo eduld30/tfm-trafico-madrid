@@ -82,12 +82,15 @@ silver_catalog = env_config.catalogs.silver
 
 KML_LANDING_PATH = "geografia/distritos"
 KML_FILENAME = "distritos.kml"
-LOCAL_KML_PATH = "/tmp/distritos.kml"
+# Máximo de bytes a leer del KML. El fichero real pesa ~390 KB; se deja
+# margen amplio porque el compute serverless no permite copiarlo a disco
+# local (fuera de /Workspace) y hay que leerlo entero en memoria.
+KML_MAX_BYTES = 5_000_000
 
 kml_uri = build_adls_uri(
     storage_account, env_config.storage.containers.landing, KML_LANDING_PATH
 ) + KML_FILENAME
-dbutils.fs.cp(kml_uri, f"file:{LOCAL_KML_PATH}")
+kml_text = dbutils.fs.head(kml_uri, KML_MAX_BYTES)
 
 
 class Distrito(NamedTuple):
@@ -106,9 +109,9 @@ def _extract_field(description: str, name: str) -> str | None:
     return match.group(1) if match else None
 
 
-def parse_distritos_kml(path: str) -> list[Distrito]:
-    """Lee el KML oficial de distritos y devuelve un polígono por distrito."""
-    root = ET.parse(path).getroot()
+def parse_distritos_kml(kml_text: str) -> list[Distrito]:
+    """Parsea el XML del KML oficial de distritos (en memoria, sin disco local)."""
+    root = ET.fromstring(kml_text)
     distritos = []
     for placemark in root.iter("{http://www.opengis.net/kml/2.2}Placemark"):
         description = placemark.find("kml:description", _KML_NS)
@@ -117,7 +120,7 @@ def parse_distritos_kml(path: str) -> list[Distrito]:
         nombre = _extract_field(cdata, "NOMBRE")
         distri_may = _extract_field(cdata, "DISTRI_MAY")
         if cod_dis is None or nombre is None or distri_may is None:
-            raise ValueError(f"Placemark sin COD_DIS/NOMBRE/DISTRI_MAY en {path}.")
+            raise ValueError("Placemark sin COD_DIS/NOMBRE/DISTRI_MAY en el KML.")
 
         coordinates = placemark.find(".//kml:coordinates", _KML_NS)
         if coordinates is None or not coordinates.text:
@@ -130,7 +133,7 @@ def parse_distritos_kml(path: str) -> list[Distrito]:
     return distritos
 
 
-distritos = parse_distritos_kml(LOCAL_KML_PATH)
+distritos = parse_distritos_kml(kml_text)
 assert len(distritos) == 21, f"Se esperaban 21 distritos, se han leído {len(distritos)}."
 distritos[:3]
 
