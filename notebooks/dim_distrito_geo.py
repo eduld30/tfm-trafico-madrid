@@ -27,7 +27,13 @@
 # COMMAND ----------
 
 dbutils.widgets.text("environment", "dev", "Entorno")
+dbutils.widgets.text(
+    "repo_root",
+    "/Workspace/Users/lissilva@ucm.es/tfm-trafico-madrid",
+    "Raíz del repo en el workspace",
+)
 environment = dbutils.widgets.get("environment")
+repo_root = dbutils.widgets.get("repo_root")
 
 # COMMAND ----------
 
@@ -37,8 +43,11 @@ environment = dbutils.widgets.get("environment")
 # COMMAND ----------
 
 import re
+import sys
 import xml.etree.ElementTree as ET
 from typing import NamedTuple
+
+sys.path.append(f"{repo_root}/src")
 
 from pyspark.sql import DataFrame, SparkSession
 from shapely.geometry import Point, Polygon
@@ -48,7 +57,8 @@ from madrid_ingestion.core.naming import build_table_name
 from madrid_ingestion.core.paths import build_adls_uri
 from madrid_ingestion.writers.table_manager import TableManager
 
-loader = ConfigLoader()
+config_root = f"{repo_root}/conf/"
+loader = ConfigLoader(config_root)
 env_config = loader.load_environment(environment)
 storage_account = env_config.storage.account_name
 silver_catalog = env_config.catalogs.silver

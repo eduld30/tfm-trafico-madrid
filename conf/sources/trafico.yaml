@@ -2,6 +2,97 @@ source: trafico
 enabled: true
 
 datasets:
+  # Las dimensiones van primero: trafico_nrt/trafico_historico dependen de
+  # dim_trafico (lookup_join) y deben ejecutarse después de ella. Con
+  # --source trafico (sin --dataset) el motor procesa los datasets en el
+  # orden en que aparecen aquí.
+  - name: dim_trafico
+    description: "Dimensión de puntos de medida de tráfico"
+    enabled: true
+    bronze:
+      enabled: true
+      format: csv
+      source_path: "trafico/dim_trafico"
+      target_path: "trafico/dim_trafico"
+      reader_options:
+        delimiter: ";"
+        header: "true"
+        encoding: "windows-1252"
+        mode: "PERMISSIVE"
+      autoloader_options: &autoloader_options
+        schema_evolution_mode: addNewColumns
+        rescued_data_column: _rescued_data
+      transformations:
+        - type: normalize_column_names
+    silver:
+      enabled: true
+      target_path: "trafico/dim_trafico"
+      write_strategy: overwrite
+      transformations:
+        - type: empty_to_null
+          columns:
+            - distrito
+            - nombre
+        - type: cast
+          columns:
+            distrito: integer
+            id: long
+            utm_x: double
+            utm_y: double
+            longitud: double
+            latitud: double
+        - type: trim
+          columns:
+            - tipo_elem
+            - cod_cent
+            - nombre
+
+  - name: dim_distritos
+    description: "Catálogo de distritos de Madrid"
+    enabled: true
+    bronze:
+      enabled: true
+      format: csv
+      source_path: "trafico/dim_distritos"
+      target_path: "trafico/dim_distritos"
+      reader_options: &utf8_csv_options
+        delimiter: ";"
+        header: "true"
+        encoding: "UTF-8"
+        mode: "PERMISSIVE"
+      autoloader_options: *autoloader_options
+      transformations:
+        - type: normalize_column_names
+    silver:
+      enabled: true
+      target_path: "trafico/dim_distritos"
+      write_strategy: overwrite
+      transformations:
+        - type: regex_replace
+          columns:
+            - area
+          pattern: ","
+          replacement: "."
+        - type: cast
+          columns:
+            cod_dis: integer
+            area: double
+        - type: trim
+          columns:
+            - cod_dis_tx
+            - nombre
+            - distri_may
+            - distri_mt
+        - type: strip_accents
+          columns:
+            - distri_may
+        - type: upper
+          # distri_may es la clave de cruce para normalizar el distrito de
+          # accidentes/eventos: se fuerza mayúsculas y sin tildes en origen
+          # para no depender de que el CSV del Ayuntamiento ya venga así.
+          columns:
+            - distri_may
+
   - name: trafico_historico
     description: "Histórico mensual de tráfico desde 2013"
     enabled: true
@@ -10,14 +101,8 @@ datasets:
       format: csv
       source_path: "trafico/trafico_historico"
       target_path: "trafico/trafico_historico"
-      reader_options: &utf8_csv_options
-        delimiter: ";"
-        header: "true"
-        encoding: "UTF-8"
-        mode: "PERMISSIVE"
-      autoloader_options: &autoloader_options
-        schema_evolution_mode: addNewColumns
-        rescued_data_column: _rescued_data
+      reader_options: *utf8_csv_options
+      autoloader_options: *autoloader_options
       transformations:
         - type: normalize_column_names
     silver:
@@ -152,84 +237,3 @@ datasets:
           order_by:
             - column: _ingestion_timestamp
               direction: desc
-
-  - name: dim_trafico
-    description: "Dimensión de puntos de medida de tráfico"
-    enabled: true
-    bronze:
-      enabled: true
-      format: csv
-      source_path: "trafico/dim_trafico"
-      target_path: "trafico/dim_trafico"
-      reader_options:
-        delimiter: ";"
-        header: "true"
-        encoding: "windows-1252"
-        mode: "PERMISSIVE"
-      autoloader_options: *autoloader_options
-      transformations:
-        - type: normalize_column_names
-    silver:
-      enabled: true
-      target_path: "trafico/dim_trafico"
-      write_strategy: overwrite
-      transformations:
-        - type: empty_to_null
-          columns:
-            - distrito
-            - nombre
-        - type: cast
-          columns:
-            distrito: integer
-            id: long
-            utm_x: double
-            utm_y: double
-            longitud: double
-            latitud: double
-        - type: trim
-          columns:
-            - tipo_elem
-            - cod_cent
-            - nombre
-
-  - name: dim_distritos
-    description: "Catálogo de distritos de Madrid"
-    enabled: true
-    bronze:
-      enabled: true
-      format: csv
-      source_path: "trafico/dim_distritos"
-      target_path: "trafico/dim_distritos"
-      reader_options: *utf8_csv_options
-      autoloader_options: *autoloader_options
-      transformations:
-        - type: normalize_column_names
-    silver:
-      enabled: true
-      target_path: "trafico/dim_distritos"
-      write_strategy: overwrite
-      transformations:
-        - type: regex_replace
-          columns:
-            - area
-          pattern: ","
-          replacement: "."
-        - type: cast
-          columns:
-            cod_dis: integer
-            area: double
-        - type: trim
-          columns:
-            - cod_dis_tx
-            - nombre
-            - distri_may
-            - distri_mt
-        - type: strip_accents
-          columns:
-            - distri_may
-        - type: upper
-          # distri_may es la clave de cruce para normalizar el distrito de
-          # accidentes/eventos: se fuerza mayúsculas y sin tildes en origen
-          # para no depender de que el CSV del Ayuntamiento ya venga así.
-          columns:
-            - distri_may

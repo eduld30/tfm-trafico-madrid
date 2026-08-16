@@ -2,14 +2,18 @@ source: meteo
 enabled: true
 
 datasets:
-  - name: meteo_nrt
-    description: "Meteorología cercana a tiempo real"
+  # dim_meteo va primero: meteo_nrt/meteo_historico dependen (vía
+  # dim_meteo_distrito, generada aparte por notebooks/dim_distrito_geo.py)
+  # de que dim_meteo ya esté en Silver. Con --source meteo (sin --dataset)
+  # el motor procesa los datasets en el orden en que aparecen aquí.
+  - name: dim_meteo
+    description: "Dimensión de estaciones meteorológicas"
     enabled: true
     bronze:
       enabled: true
       format: csv
-      source_path: "meteo/meteo_nrt"
-      target_path: "meteo/meteo_nrt"
+      source_path: "meteo/dim_meteo"
+      target_path: "meteo/dim_meteo"
       reader_options: &csv_options
         delimiter: ";"
         header: "true"
@@ -18,6 +22,79 @@ datasets:
       autoloader_options: &autoloader_options
         schema_evolution_mode: addNewColumns
         rescued_data_column: _rescued_data
+      transformations:
+        - type: normalize_column_names
+    silver:
+      enabled: true
+      target_path: "meteo/dim_meteo"
+      write_strategy: overwrite
+      transformations:
+        - type: empty_to_null
+          columns:
+            - vv_81
+            - dv_82
+            - t_83
+            - hr_86
+            - pb_87
+            - rs_88
+            - p_89
+            - cod_via
+            - via_par
+            - num_via
+        - type: regex_replace
+          columns:
+            - coordenada_x_etrs89
+            - coordenada_y_etrs89
+          pattern: ","
+          replacement: "."
+        - type: cast
+          columns:
+            codigo: long
+            codigo_corto: integer
+            altitud: integer
+            cod_via: long
+            coordenada_x_etrs89: double
+            coordenada_y_etrs89: double
+            longitud: double
+            latitud: double
+        - type: trim
+          columns:
+            - estacion
+            - direccion
+            - longitud_etrs89
+            - latitud_etrs89
+            - via_clase
+            - via_par
+            - via_nombre
+            - num_via
+
+  - name: dim_magnitudes_meteo
+    description: "Catálogo estático de magnitudes meteorológicas"
+    enabled: false
+    bronze:
+      enabled: true
+      format: csv
+      source_path: "meteo/dim_magnitudes_meteo"
+      target_path: "meteo/dim_magnitudes_meteo"
+      reader_options: *csv_options
+      autoloader_options: *autoloader_options
+      transformations:
+        - type: normalize_column_names
+    silver:
+      enabled: true
+      target_path: "meteo/dim_magnitudes_meteo"
+      write_strategy: overwrite
+
+  - name: meteo_nrt
+    description: "Meteorología cercana a tiempo real"
+    enabled: true
+    bronze:
+      enabled: true
+      format: csv
+      source_path: "meteo/meteo_nrt"
+      target_path: "meteo/meteo_nrt"
+      reader_options: *csv_options
+      autoloader_options: *autoloader_options
       transformations:
         - type: normalize_column_names
     silver:
@@ -96,76 +173,3 @@ datasets:
         - magnitud
         - fecha_hora
       transformations: *hourly_transformations
-
-  - name: dim_meteo
-    description: "Dimensión de estaciones meteorológicas"
-    enabled: true
-    bronze:
-      enabled: true
-      format: csv
-      source_path: "meteo/dim_meteo"
-      target_path: "meteo/dim_meteo"
-      reader_options: *csv_options
-      autoloader_options: *autoloader_options
-      transformations:
-        - type: normalize_column_names
-    silver:
-      enabled: true
-      target_path: "meteo/dim_meteo"
-      write_strategy: overwrite
-      transformations:
-        - type: empty_to_null
-          columns:
-            - vv_81
-            - dv_82
-            - t_83
-            - hr_86
-            - pb_87
-            - rs_88
-            - p_89
-            - cod_via
-            - via_par
-            - num_via
-        - type: regex_replace
-          columns:
-            - coordenada_x_etrs89
-            - coordenada_y_etrs89
-          pattern: ","
-          replacement: "."
-        - type: cast
-          columns:
-            codigo: long
-            codigo_corto: integer
-            altitud: integer
-            cod_via: long
-            coordenada_x_etrs89: double
-            coordenada_y_etrs89: double
-            longitud: double
-            latitud: double
-        - type: trim
-          columns:
-            - estacion
-            - direccion
-            - longitud_etrs89
-            - latitud_etrs89
-            - via_clase
-            - via_par
-            - via_nombre
-            - num_via
-
-  - name: dim_magnitudes_meteo
-    description: "Catálogo estático de magnitudes meteorológicas"
-    enabled: false
-    bronze:
-      enabled: true
-      format: csv
-      source_path: "meteo/dim_magnitudes_meteo"
-      target_path: "meteo/dim_magnitudes_meteo"
-      reader_options: *csv_options
-      autoloader_options: *autoloader_options
-      transformations:
-        - type: normalize_column_names
-    silver:
-      enabled: true
-      target_path: "meteo/dim_magnitudes_meteo"
-      write_strategy: overwrite

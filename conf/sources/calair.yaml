@@ -2,96 +2,10 @@ source: calair
 enabled: true
 
 datasets:
-  - name: calair_nrt
-    description: "Calidad del aire cercana a tiempo real"
-    enabled: true
-    bronze:
-      enabled: true
-      format: csv
-      source_path: "calair/calair_nrt"
-      target_path: "calair/calair_nrt"
-      reader_options: &csv_options
-        delimiter: ";"
-        header: "true"
-        encoding: "UTF-8"
-        mode: "PERMISSIVE"
-      autoloader_options: &autoloader_options
-        schema_evolution_mode: addNewColumns
-        rescued_data_column: _rescued_data
-      transformations:
-        - type: normalize_column_names
-    silver:
-      enabled: true
-      target_path: "calair/calair_nrt"
-      write_strategy: merge
-      business_keys:
-        - punto_muestreo
-        - fecha_hora
-      transformations: &hourly_transformations
-        - type: hourly_wide_to_long
-          year_column: ano
-          month_column: mes
-          day_column: dia
-          value_prefix: h
-          validity_prefix: v
-          value_column: valor
-          validity_column: validez
-          timestamp_column: fecha_hora
-          hours: 24
-          hour_offset: -1
-        - type: filter
-          condition: "validez = 'V'"
-        - type: drop
-          columns:
-            - ano
-            - mes
-            - dia
-        - type: cast
-          columns:
-            estacion: integer
-            magnitud: integer
-        - type: lookup_join
-          # estacion coincide con dim_calair_distrito.codigo_corto.
-          # dim_calair_distrito la genera notebooks/dim_distrito_geo.py.
-          lookup_table:
-            layer: silver
-            source: calair
-            dataset: dim_calair_distrito
-          join_type: left
-          conditions:
-            estacion: codigo_corto
-          select:
-            distrito_cod: distrito_cod
-            distrito_nombre: distrito_nombre
-        - type: deduplicate
-          keys:
-            - punto_muestreo
-            - fecha_hora
-          order_by:
-            - column: _ingestion_timestamp
-              direction: desc
-
-  - name: calair_historico
-    description: "Histórico mensual de calidad del aire con granularidad horaria"
-    enabled: true
-    bronze:
-      enabled: true
-      format: csv
-      source_path: "calair/calair_historico"
-      target_path: "calair/calair_historico"
-      reader_options: *csv_options
-      autoloader_options: *autoloader_options
-      transformations:
-        - type: normalize_column_names
-    silver:
-      enabled: true
-      target_path: "calair/calair_historico"
-      write_strategy: merge
-      business_keys:
-        - punto_muestreo
-        - fecha_hora
-      transformations: *hourly_transformations
-
+  # dim_calair va primero: calair_nrt/calair_historico dependen (vía
+  # dim_calair_distrito, generada aparte por notebooks/dim_distrito_geo.py)
+  # de que dim_calair ya esté en Silver. Con --source calair (sin --dataset)
+  # el motor procesa los datasets en el orden en que aparecen aquí.
   - name: dim_calair
     description: "Dimensión de estaciones de calidad del aire"
     enabled: true
@@ -100,8 +14,14 @@ datasets:
       format: csv
       source_path: "calair/dim_calair"
       target_path: "calair/dim_calair"
-      reader_options: *csv_options
-      autoloader_options: *autoloader_options
+      reader_options: &csv_options
+        delimiter: ";"
+        header: "true"
+        encoding: "UTF-8"
+        mode: "PERMISSIVE"
+      autoloader_options: &autoloader_options
+        schema_evolution_mode: addNewColumns
+        rescued_data_column: _rescued_data
       transformations:
         - type: normalize_column_names
     silver:
@@ -175,3 +95,87 @@ datasets:
       enabled: true
       target_path: "calair/dim_magnitudes_calair"
       write_strategy: overwrite
+
+  - name: calair_nrt
+    description: "Calidad del aire cercana a tiempo real"
+    enabled: true
+    bronze:
+      enabled: true
+      format: csv
+      source_path: "calair/calair_nrt"
+      target_path: "calair/calair_nrt"
+      reader_options: *csv_options
+      autoloader_options: *autoloader_options
+      transformations:
+        - type: normalize_column_names
+    silver:
+      enabled: true
+      target_path: "calair/calair_nrt"
+      write_strategy: merge
+      business_keys:
+        - punto_muestreo
+        - fecha_hora
+      transformations: &hourly_transformations
+        - type: hourly_wide_to_long
+          year_column: ano
+          month_column: mes
+          day_column: dia
+          value_prefix: h
+          validity_prefix: v
+          value_column: valor
+          validity_column: validez
+          timestamp_column: fecha_hora
+          hours: 24
+          hour_offset: -1
+        - type: filter
+          condition: "validez = 'V'"
+        - type: drop
+          columns:
+            - ano
+            - mes
+            - dia
+        - type: cast
+          columns:
+            estacion: integer
+            magnitud: integer
+        - type: lookup_join
+          # estacion coincide con dim_calair_distrito.codigo_corto.
+          # dim_calair_distrito la genera notebooks/dim_distrito_geo.py.
+          lookup_table:
+            layer: silver
+            source: calair
+            dataset: dim_calair_distrito
+          join_type: left
+          conditions:
+            estacion: codigo_corto
+          select:
+            distrito_cod: distrito_cod
+            distrito_nombre: distrito_nombre
+        - type: deduplicate
+          keys:
+            - punto_muestreo
+            - fecha_hora
+          order_by:
+            - column: _ingestion_timestamp
+              direction: desc
+
+  - name: calair_historico
+    description: "Histórico mensual de calidad del aire con granularidad horaria"
+    enabled: true
+    bronze:
+      enabled: true
+      format: csv
+      source_path: "calair/calair_historico"
+      target_path: "calair/calair_historico"
+      reader_options: *csv_options
+      autoloader_options: *autoloader_options
+      transformations:
+        - type: normalize_column_names
+    silver:
+      enabled: true
+      target_path: "calair/calair_historico"
+      write_strategy: merge
+      business_keys:
+        - punto_muestreo
+        - fecha_hora
+      transformations: *hourly_transformations
