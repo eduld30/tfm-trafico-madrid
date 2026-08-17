@@ -88,6 +88,14 @@ datasets:
           # distri_may de dim_distritos, que sigue esa misma convención.
           columns:
             - distrito_instalacion
+        - type: regex_replace
+          # Por si algún registro trae los distritos compuestos con
+          # espacios alrededor del guion ("SAN BLAS - CANILLEJAS"); se
+          # colapsa al mismo formato que distri_may tras normalizarlo.
+          columns:
+            - distrito_instalacion
+          pattern: "\\s*-\\s*"
+          replacement: "-"
         - type: lookup_join
           lookup_table:
             layer: silver

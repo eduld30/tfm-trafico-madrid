@@ -92,6 +92,14 @@ datasets:
           # para no depender de que el CSV del Ayuntamiento ya venga así.
           columns:
             - distri_may
+        - type: regex_replace
+          # El KML trae los distritos compuestos con espacios alrededor del
+          # guion ("MONCLOA - ARAVACA"), pero eventos_culturales los trae
+          # pegados ("MONCLOA-ARAVACA"). Se colapsa a un formato único.
+          columns:
+            - distri_may
+          pattern: "\\s*-\\s*"
+          replacement: "-"
 
   - name: trafico_historico
     description: "Histórico mensual de tráfico desde 2013"

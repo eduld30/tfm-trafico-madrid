@@ -129,11 +129,19 @@ def test_eventos_normalizes_distrito_by_uppercased_text():
     transformations = dataset.silver.transformations
     accent_steps = [t for t in transformations if t.type == "strip_accents"]
     upper_steps = [t for t in transformations if t.type == "upper"]
+    dash_steps = [
+        t
+        for t in transformations
+        if t.type == "regex_replace" and t.columns == ["distrito_instalacion"]
+    ]
     join_steps = [t for t in transformations if t.type == "lookup_join"]
     assert len(accent_steps) == 1
     assert accent_steps[0].columns == ["distrito_instalacion"]
     assert len(upper_steps) == 1
     assert upper_steps[0].columns == ["distrito_instalacion"]
+    assert len(dash_steps) == 1
+    assert dash_steps[0].pattern == "\\s*-\\s*"
+    assert dash_steps[0].replacement == "-"
     assert len(join_steps) == 1
     join = join_steps[0]
     assert join.lookup_table.source == "trafico"
@@ -146,9 +154,14 @@ def test_eventos_normalizes_distrito_by_uppercased_text():
 
     accent_index = transformations.index(accent_steps[0])
     upper_index = transformations.index(upper_steps[0])
+    dash_index = transformations.index(dash_steps[0])
     join_index = transformations.index(join)
     assert accent_index < join_index and upper_index < join_index, (
         "distrito_instalacion debe normalizarse (sin tildes, mayúsculas) "
+        "antes de cruzarlo con distri_may"
+    )
+    assert dash_index < join_index, (
+        "distrito_instalacion debe colapsar espacios alrededor del guion "
         "antes de cruzarlo con distri_may"
     )
 
@@ -158,10 +171,18 @@ def test_dim_distritos_normalizes_join_key_in_source():
     transformations = dataset.silver.transformations
     accent_steps = [t for t in transformations if t.type == "strip_accents"]
     upper_steps = [t for t in transformations if t.type == "upper"]
+    dash_steps = [
+        t
+        for t in transformations
+        if t.type == "regex_replace" and t.columns == ["distri_may"]
+    ]
     assert len(accent_steps) == 1
     assert accent_steps[0].columns == ["distri_may"]
     assert len(upper_steps) == 1
     assert upper_steps[0].columns == ["distri_may"]
+    assert len(dash_steps) == 1
+    assert dash_steps[0].pattern == "\\s*-\\s*"
+    assert dash_steps[0].replacement == "-"
 
 
 @pytest.mark.parametrize(
