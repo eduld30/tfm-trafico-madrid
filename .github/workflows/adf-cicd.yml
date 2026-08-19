@@ -1,0 +1,169 @@
+name: ADF CI/CD
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - "adf/**"
+      - ".github/workflows/adf-cicd.yml"
+      - "package.json"
+  push:
+    branches: [develop, main]
+    paths:
+      - "adf/**"
+      - ".github/workflows/adf-cicd.yml"
+      - "package.json"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Entorno al que desplegar"
+        required: true
+        type: choice
+        options:
+          - dev
+          - pro
+
+permissions:
+  id-token: write # necesario para el login OIDC contra Azure (sin secrets de larga duración)
+  contents: read
+
+jobs:
+  # Valida los recursos ADF y genera el ARM template. No toca Azure.
+  # Se ejecuta en PRs y pushes solo como comprobación; el deploy real es manual (workflow_dispatch).
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+
+      - name: Install npm dependencies
+        run: npm install
+
+      - name: Validate ADF resources
+        run: >
+          npm run build validate
+          adf
+          /subscriptions/${{ vars.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ vars.DEV_RESOURCE_GROUP }}/providers/Microsoft.DataFactory/factories/${{ vars.DEV_FACTORY_NAME }}
+
+      - name: Export ARM template
+        run: >
+          npm run build export
+          adf
+          /subscriptions/${{ vars.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ vars.DEV_RESOURCE_GROUP }}/providers/Microsoft.DataFactory/factories/${{ vars.DEV_FACTORY_NAME }}
+          ArmTemplateOutput
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: adf-arm-template
+          path: ArmTemplateOutput
+
+  # Despliega a dev solo cuando se lanza manualmente desde Actions ("Run workflow" -> environment: dev).
+  deploy_dev:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'dev'
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: adf-arm-template
+          path: ArmTemplateOutput
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Parar triggers antes del deploy
+        uses: azure/powershell@v2
+        with:
+          azPSVersion: latest
+          scriptType: FilePath
+          scriptPath: ArmTemplateOutput/PrePostDeploymentScript.Ver2.ps1
+          scriptArguments: >
+            -armTemplate "ArmTemplateOutput/ARMTemplateForFactory.json"
+            -ResourceGroupName ${{ vars.DEV_RESOURCE_GROUP }}
+            -DataFactoryName ${{ vars.DEV_FACTORY_NAME }}
+            -predeployment $true
+            -deleteDeployment $false
+
+      - name: Desplegar ARM template
+        uses: azure/arm-deploy@v2
+        with:
+          subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          resourceGroupName: ${{ vars.DEV_RESOURCE_GROUP }}
+          template: ArmTemplateOutput/ARMTemplateForFactory.json
+          parameters: >
+            ArmTemplateOutput/ARMTemplateParametersForFactory.json
+            adf/params/dev.json
+
+      - name: Arrancar triggers tras el deploy
+        uses: azure/powershell@v2
+        with:
+          azPSVersion: latest
+          scriptType: FilePath
+          scriptPath: ArmTemplateOutput/PrePostDeploymentScript.Ver2.ps1
+          scriptArguments: >
+            -armTemplate "ArmTemplateOutput/ARMTemplateForFactory.json"
+            -ResourceGroupName ${{ vars.DEV_RESOURCE_GROUP }}
+            -DataFactoryName ${{ vars.DEV_FACTORY_NAME }}
+            -predeployment $false
+            -deleteDeployment $true
+
+  # Despliega a pro solo cuando se lanza manualmente desde Actions ("Run workflow" -> environment: pro).
+  deploy_pro:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'pro'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: adf-arm-template
+          path: ArmTemplateOutput
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Parar triggers antes del deploy
+        uses: azure/powershell@v2
+        with:
+          azPSVersion: latest
+          scriptType: FilePath
+          scriptPath: ArmTemplateOutput/PrePostDeploymentScript.Ver2.ps1
+          scriptArguments: >
+            -armTemplate "ArmTemplateOutput/ARMTemplateForFactory.json"
+            -ResourceGroupName ${{ vars.PRO_RESOURCE_GROUP }}
+            -DataFactoryName ${{ vars.PRO_FACTORY_NAME }}
+            -predeployment $true
+            -deleteDeployment $false
+
+      - name: Desplegar ARM template
+        uses: azure/arm-deploy@v2
+        with:
+          subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          resourceGroupName: ${{ vars.PRO_RESOURCE_GROUP }}
+          template: ArmTemplateOutput/ARMTemplateForFactory.json
+          parameters: >
+            ArmTemplateOutput/ARMTemplateParametersForFactory.json
+            adf/params/pro.json
+
+      - name: Arrancar triggers tras el deploy
+        uses: azure/powershell@v2
+        with:
+          azPSVersion: latest
+          scriptType: FilePath
+          scriptPath: ArmTemplateOutput/PrePostDeploymentScript.Ver2.ps1
+          scriptArguments: >
+            -armTemplate "ArmTemplateOutput/ARMTemplateForFactory.json"
+            -ResourceGroupName ${{ vars.PRO_RESOURCE_GROUP }}
+            -DataFactoryName ${{ vars.PRO_FACTORY_NAME }}
+            -predeployment $false
+            -deleteDeployment $true
