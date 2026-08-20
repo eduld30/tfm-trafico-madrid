@@ -6,12 +6,15 @@ from typing import Any
 
 from madrid_ingestion.core.exceptions import IngestionError
 
+FILE_DATE_PATTERN = r"(?:^|/)(\d{4}/\d{2}/\d{2})(?:/|$)"
+
 BRONZE_METADATA_COLUMNS = frozenset(
     {
         "_ingestion_timestamp",
         "_ingestion_run_id",
         "_source_file",
         "_source_file_modification_time",
+        "_file_date",
     }
 )
 
@@ -29,6 +32,15 @@ def add_bronze_metadata(df: Any, run_id: str) -> Any:
         df.withColumn("_ingestion_timestamp", F.current_timestamp())
         .withColumn("_ingestion_run_id", F.lit(run_id))
         .withColumn("_source_file", F.col("_metadata.file_path"))
+        .withColumn(
+            "_file_date",
+            F.to_date(
+                F.regexp_extract(
+                    F.col("_metadata.file_path"), FILE_DATE_PATTERN, 1
+                ),
+                "yyyy/MM/dd",
+            ),
+        )
         .withColumn(
             "_source_file_modification_time",
             F.col("_metadata.file_modification_time"),

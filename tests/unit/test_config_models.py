@@ -33,17 +33,9 @@ def test_merge_requires_business_keys():
         silver(write_strategy="merge")
 
 
-def test_append_requires_incremental_strategy():
-    with pytest.raises(ValidationError, match="incremental"):
-        silver(write_strategy="append")
-
-
-def test_append_accepts_ingestion_run_id():
-    config = silver(
-        write_strategy="append",
-        incremental={"type": "ingestion_run_id"},
-    )
-    assert config.incremental.type == "ingestion_run_id"
+def test_append_uses_the_common_incremental_processing():
+    config = silver(write_strategy="append")
+    assert config.write_strategy == "append"
 
 
 def test_unknown_transformation_fails_early():

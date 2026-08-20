@@ -145,19 +145,6 @@ class BronzeConfig(StrictModel):
         return value
 
 
-class IncrementalConfig(StrictModel):
-    type: Literal["ingestion_run_id", "predicate"]
-    condition: str | None = None
-
-    @model_validator(mode="after")
-    def validate_condition(self) -> IncrementalConfig:
-        if self.type == "predicate" and not self.condition:
-            raise ValueError("incremental.condition es obligatorio para type='predicate'.")
-        if self.type == "ingestion_run_id" and self.condition is not None:
-            raise ValueError("ingestion_run_id no admite condition.")
-        return self
-
-
 class LookupTableConfig(StrictModel):
     layer: Literal["bronze", "silver"]
     source: str
@@ -296,7 +283,6 @@ class SilverConfig(StrictModel):
     business_keys: list[str] = Field(default_factory=list)
     partition_by: list[str] = Field(default_factory=list)
     transformations: list[TransformationConfig] = Field(default_factory=list)
-    incremental: IncrementalConfig | None = None
     overwrite_schema: bool = False
     source_table: SilverSourceConfig | None = None
 
@@ -309,10 +295,6 @@ class SilverConfig(StrictModel):
     def validate_strategy(self) -> SilverConfig:
         if self.write_strategy == "merge" and not self.business_keys:
             raise ValueError("write_strategy='merge' requiere business_keys.")
-        if self.write_strategy == "append" and self.incremental is None:
-            raise ValueError("write_strategy='append' requiere incremental.")
-        if self.write_strategy != "append" and self.incremental is not None:
-            raise ValueError("incremental solo se admite con write_strategy='append'.")
         if len(self.business_keys) != len(set(self.business_keys)):
             raise ValueError("business_keys contiene valores duplicados.")
         return self

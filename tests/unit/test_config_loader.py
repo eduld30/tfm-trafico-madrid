@@ -66,6 +66,7 @@ def test_enriches_with_dim_trafico_after_cast(dataset_name, source_key):
         transformation
         for transformation in dataset.silver.transformations
         if transformation.type == "lookup_join"
+        and transformation.lookup_table.dataset == "dim_trafico"
     ]
     assert len(joins) == 1
     join = joins[0]
@@ -75,7 +76,7 @@ def test_enriches_with_dim_trafico_after_cast(dataset_name, source_key):
     assert join.join_type == "left"
     assert join.conditions == {source_key: "id"}
     assert join.select == {
-        "distrito": "distrito",
+        "distrito_cod": "distrito",
         "latitud": "latitud",
         "longitud": "longitud",
     }
@@ -198,8 +199,11 @@ def test_enriches_with_distrito_dimension_after_cast(source, dataset_name, looku
     _, dataset = ConfigLoader(CONFIG_ROOT).load_dataset(source, dataset_name)
     transformations = dataset.silver.transformations
     joins = [t for t in transformations if t.type == "lookup_join"]
-    assert len(joins) == 1
-    join = joins[0]
+    matching_joins = [
+        join for join in joins if join.lookup_table.dataset == lookup_dataset
+    ]
+    assert len(matching_joins) == 1
+    join = matching_joins[0]
     assert join.lookup_table.layer == "silver"
     assert join.lookup_table.source == source
     assert join.lookup_table.dataset == lookup_dataset
