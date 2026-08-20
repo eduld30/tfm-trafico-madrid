@@ -68,22 +68,26 @@ datasets:
             - via_nombre
             - num_via
 
-  - name: dim_magnitudes_meteo
+  - name: dim_meteo_magnitudes
     description: "Catálogo estático de magnitudes meteorológicas"
-    enabled: false
+    enabled: true
     bronze:
       enabled: true
       format: csv
-      source_path: "meteo/dim_magnitudes_meteo"
-      target_path: "meteo/dim_magnitudes_meteo"
+      source_path: "meteo/dim_meteo_magnitudes"
+      target_path: "meteo/dim_meteo_magnitudes"
       reader_options: *csv_options
       autoloader_options: *autoloader_options
       transformations:
         - type: normalize_column_names
     silver:
       enabled: true
-      target_path: "meteo/dim_magnitudes_meteo"
+      target_path: "meteo/dim_meteo_magnitudes"
       write_strategy: overwrite
+      transformations:
+        - type: cast
+          columns:
+            codigo: integer
 
   - name: meteo_nrt
     description: "Meteorología cercana a tiempo real"
@@ -143,6 +147,17 @@ datasets:
           select:
             distrito_cod: distrito_cod
             distrito_nombre: distrito_nombre
+        - type: lookup_join
+          lookup_table:
+            layer: silver
+            source: meteo
+            dataset: dim_meteo_magnitudes
+          join_type: left
+          conditions:
+            magnitud: codigo
+          select:
+            magnitud_nombre: parametro
+            magnitud_unidad: unidad_de_medida
         - type: deduplicate
           keys:
             - estacion
