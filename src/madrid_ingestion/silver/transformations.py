@@ -339,6 +339,28 @@ def lookup_join(df: Any, config: TransformationConfig, context: RunContext) -> A
     return joined.select("source.*", *additions)
 
 
+def assign_station_district(
+    df: Any, config: TransformationConfig, context: RunContext
+) -> Any:
+    """Asigna distrito a una dimensión pequeña de estaciones."""
+    del context
+    assert config.station_key is not None
+    assert config.longitude_column is not None
+    assert config.latitude_column is not None
+    assert config.district_code_column is not None
+    assert config.district_name_column is not None
+    from madrid_ingestion.geospatial.districts import enrich_stations_with_district
+
+    return enrich_stations_with_district(
+        df,
+        station_key=config.station_key,
+        longitude_column=config.longitude_column,
+        latitude_column=config.latitude_column,
+        district_code_column=config.district_code_column,
+        district_name_column=config.district_name_column,
+    )
+
+
 TransformationFunction = Callable[[Any, TransformationConfig, RunContext], Any]
 
 TRANSFORMATIONS: dict[str, TransformationFunction] = {
@@ -360,6 +382,7 @@ TRANSFORMATIONS: dict[str, TransformationFunction] = {
     "hourly_wide_to_long": hourly_wide_to_long,
     "deduplicate": deduplicate,
     "lookup_join": lookup_join,
+    "assign_district": assign_station_district,
 }
 
 

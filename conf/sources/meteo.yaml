@@ -2,10 +2,8 @@ source: meteo
 enabled: true
 
 datasets:
-  # dim_meteo va primero: meteo_nrt/meteo_historico dependen (vía
-  # dim_meteo_distrito, generada aparte por notebooks/dim_distrito_geo.py)
-  # de que dim_meteo ya esté en Silver. Con --source meteo (sin --dataset)
-  # el motor procesa los datasets en el orden en que aparecen aquí.
+  # dim_meteo va primero porque se enriquece con el distrito mediante el KML
+  # estático del paquete y después la consultan meteo_nrt/meteo_historico.
   - name: dim_meteo
     description: "Dimensión de estaciones meteorológicas"
     enabled: true
@@ -67,6 +65,12 @@ datasets:
             - via_par
             - via_nombre
             - num_via
+        - type: assign_district
+          station_key: codigo_corto
+          longitude_column: longitud
+          latitude_column: latitud
+          district_code_column: distrito_cod
+          district_name_column: distrito_nombre
 
   - name: dim_meteo_magnitudes
     description: "Catálogo estático de magnitudes meteorológicas"
@@ -134,13 +138,12 @@ datasets:
             estacion: integer
             magnitud: integer
         - type: lookup_join
-          # estacion coincide con dim_meteo_distrito.codigo_corto (el nombre
-          # descriptivo de la estación vive en dim_meteo.estacion, un campo
-          # distinto). dim_meteo_distrito la genera notebooks/dim_distrito_geo.py.
+          # estacion coincide con dim_meteo.codigo_corto; dim_meteo ya contiene
+          # el distrito calculado con el KML estático del paquete.
           lookup_table:
             layer: silver
             source: meteo
-            dataset: dim_meteo_distrito
+            dataset: dim_meteo
           join_type: left
           conditions:
             estacion: codigo_corto

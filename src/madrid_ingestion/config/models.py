@@ -29,6 +29,7 @@ SUPPORTED_TRANSFORMATIONS = frozenset(
         "hourly_wide_to_long",
         "deduplicate",
         "lookup_join",
+        "assign_district",
     }
 )
 
@@ -187,6 +188,11 @@ class TransformationConfig(StrictModel):
     timestamp_column: str | None = None
     hours: int | None = None
     hour_offset: int = -1
+    station_key: str | None = None
+    longitude_column: str | None = None
+    latitude_column: str | None = None
+    district_code_column: str | None = None
+    district_name_column: str | None = None
 
     @model_validator(mode="after")
     def validate_parameters(self) -> TransformationConfig:
@@ -220,6 +226,13 @@ class TransformationConfig(StrictModel):
             ),
             "deduplicate": ("keys", "order_by"),
             "lookup_join": ("lookup_table", "conditions", "select"),
+            "assign_district": (
+                "station_key",
+                "longitude_column",
+                "latitude_column",
+                "district_code_column",
+                "district_name_column",
+            ),
         }
         missing = [
             name for name in required.get(self.type, ()) if getattr(self, name) is None
@@ -268,6 +281,13 @@ class TransformationConfig(StrictModel):
             not self.conditions or not self.select
         ):
             raise ValueError("lookup_join requiere conditions y select no vacíos.")
+        if (
+            self.type == "assign_district"
+            and self.district_code_column == self.district_name_column
+        ):
+            raise ValueError(
+                "assign_district requiere columnas de código y nombre distintas."
+            )
         return self
 
 

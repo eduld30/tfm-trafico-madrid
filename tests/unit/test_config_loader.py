@@ -189,10 +189,10 @@ def test_dim_distritos_normalizes_join_key_in_source():
 @pytest.mark.parametrize(
     ("source", "dataset_name", "lookup_dataset"),
     [
-        ("meteo", "meteo_nrt", "dim_meteo_distrito"),
-        ("meteo", "meteo_historico", "dim_meteo_distrito"),
-        ("calair", "calair_nrt", "dim_calair_distrito"),
-        ("calair", "calair_historico", "dim_calair_distrito"),
+        ("meteo", "meteo_nrt", "dim_meteo"),
+        ("meteo", "meteo_historico", "dim_meteo"),
+        ("calair", "calair_nrt", "dim_calair"),
+        ("calair", "calair_historico", "dim_calair"),
     ],
 )
 def test_enriches_with_distrito_dimension_after_cast(source, dataset_name, lookup_dataset):
@@ -220,6 +220,27 @@ def test_enriches_with_distrito_dimension_after_cast(source, dataset_name, looku
     assert cast_index < join_index, (
         "el lookup_join debe ir después del cast de estacion a integer"
     )
+
+
+@pytest.mark.parametrize(
+    ("source", "dataset_name"),
+    [("meteo", "dim_meteo"), ("calair", "dim_calair")],
+)
+def test_station_dimensions_assign_district(source, dataset_name):
+    _, dataset = ConfigLoader(CONFIG_ROOT).load_dataset(source, dataset_name)
+    assert dataset.silver.overwrite_schema is True
+    steps = [
+        transformation
+        for transformation in dataset.silver.transformations
+        if transformation.type == "assign_district"
+    ]
+    assert len(steps) == 1
+    step = steps[0]
+    assert step.station_key == "codigo_corto"
+    assert step.longitude_column == "longitud"
+    assert step.latitude_column == "latitud"
+    assert step.district_code_column == "distrito_cod"
+    assert step.district_name_column == "distrito_nombre"
 
 
 def test_missing_dataset_has_domain_error():

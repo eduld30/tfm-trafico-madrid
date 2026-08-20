@@ -455,6 +455,12 @@ madrid-ingestion/
 │       │   ├── base.py
 │       │   ├── csv_reader.py
 │       │   └── xml_reader.py
+│       ├── geospatial/
+│       │   ├── __init__.py
+│       │   └── districts.py
+│       ├── resources/
+│       │   ├── __init__.py
+│       │   └── distritos.kml
 │       ├── writers/
 │       │   ├── __init__.py
 │       │   ├── delta_writer.py
@@ -482,6 +488,7 @@ pyspark
 APIs Delta disponibles en Databricks
 PyYAML
 pydantic
+shapely
 ```
 
 Dependencias de desarrollo opcionales:
@@ -1041,6 +1048,27 @@ Necesaria para mapear estaciones o puntos de medida a distritos.
 
 El motor resolverá el nombre completo de la tabla. No implementar un lenguaje genérico de joins arbitrarios en la primera versión.
 
+#### `assign_district`
+
+Transformación acotada a las pequeñas dimensiones de estaciones meteorológicas
+y de calidad del aire. Utiliza el KML estático versionado dentro del paquete y
+añade el código y el nombre del distrito directamente a la dimensión Silver.
+
+```yaml
+- type: assign_district
+  station_key: codigo_corto
+  longitude_column: longitud
+  latitude_column: latitud
+  district_code_column: distrito_cod
+  district_name_column: distrito_nombre
+```
+
+El KML del proyecto contiene exactamente 21 contornos cerrados, uno por
+distrito. La implementación debe validar ese contrato y fallar si una estación
+no pertenece de forma unívoca a un distrito. No aproximar automáticamente al
+distrito más cercano. El uso de `collect()` queda permitido únicamente para
+estas dimensiones acotadas de pocas decenas de estaciones.
+
 ### 14.5 Metadatos Silver
 
 Conservar metadatos técnicos útiles:
@@ -1340,6 +1368,7 @@ TRANSFORMATIONS = {
     "parse_timestamp": parse_timestamp,
     "deduplicate": deduplicate,
     "lookup_join": lookup_join,
+    "assign_district": assign_district,
 }
 ```
 

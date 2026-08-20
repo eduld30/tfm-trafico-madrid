@@ -2,14 +2,14 @@
 # MAGIC %md
 # MAGIC # Ejecutar Silver
 # MAGIC
-# MAGIC Orquesta las 12 tablas Silver habilitadas (quedan fuera
-# MAGIC `dim_magnitudes_meteo`/`dim_magnitudes_calair`: se suben a mano, sin
-# MAGIC pipeline) en el orden correcto:
+# MAGIC Orquesta las 12 tablas Silver operativas (quedan fuera los catálogos
+# MAGIC estáticos de magnitudes, que se cargan de forma puntual) en el orden
+# MAGIC correcto:
 # MAGIC
 # MAGIC 1. Dimensiones base: `dim_trafico`, `dim_distritos`, `dim_meteo`, `dim_calair`.
-# MAGIC 2. `notebooks/dim_distrito_geo` — genera `dim_meteo_distrito` y
-# MAGIC    `dim_calair_distrito` a partir del KML de distritos.
-# MAGIC 3. Hechos que dependen de las anteriores vía `lookup_join`:
+# MAGIC    Las dimensiones de estaciones reciben su distrito durante su propia
+# MAGIC    transformación Silver usando el KML estático incluido en el paquete.
+# MAGIC 2. Hechos que dependen de las anteriores vía `lookup_join`:
 # MAGIC    `trafico_historico`, `trafico_nrt`, `accidentes_historico`,
 # MAGIC    `eventos_culturales`, `meteo_nrt`, `meteo_historico`, `calair_nrt`,
 # MAGIC    `calair_historico`.
@@ -22,12 +22,10 @@
 # MAGIC ## Antes de la primera ejecución
 # MAGIC 1. Bronze debe estar corrido (al menos para las fuentes que quieras
 # MAGIC    procesar) — este notebook no ingesta desde landing.
-# MAGIC 2. Sube `distritos.kml` a `landing/geografia/distritos/distritos.kml`
-# MAGIC    (una sola vez, es geometría estática).
 
 # COMMAND ----------
 
-# MAGIC %pip install pydantic
+# MAGIC %pip install shapely pydantic
 
 # COMMAND ----------
 
@@ -40,7 +38,6 @@ dbutils.widgets.text(
 ENVIRONMENT = dbutils.widgets.get("environment")
 REPO_ROOT = dbutils.widgets.get("repo_root")
 CONFIG_ROOT = f"{REPO_ROOT}/conf/"
-GEO_NOTEBOOK_PATH = f"{REPO_ROOT}/notebooks/dim_distrito_geo"
 
 # COMMAND ----------
 
@@ -112,37 +109,7 @@ run_silver("calair", "dim_calair")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 2. Asignación de distrito por geolocalización (meteo/calair)
-# MAGIC
-# MAGIC Solo se lanza si `dim_meteo` y `dim_calair` se procesaron bien; si no,
-# MAGIC no tiene tablas de origen que leer.
-
-# COMMAND ----------
-
-if results.get(("meteo", "dim_meteo")) == "OK" and results.get(("calair", "dim_calair")) == "OK":
-    try:
-        dbutils.notebook.run(
-            GEO_NOTEBOOK_PATH,
-            0,
-            {"environment": ENVIRONMENT, "repo_root": REPO_ROOT},
-        )
-        results[("meteo", "dim_meteo_distrito")] = "OK"
-        results[("calair", "dim_calair_distrito")] = "OK"
-        print("[OK] dim_distrito_geo (dim_meteo_distrito, dim_calair_distrito)")
-    except Exception as exc:  # noqa: BLE001
-        results[("meteo", "dim_meteo_distrito")] = f"FALLO: {exc}"
-        results[("calair", "dim_calair_distrito")] = f"FALLO: {exc}"
-        print(f"[FALLO] dim_distrito_geo: {exc}")
-else:
-    motivo = "faltan dim_meteo o dim_calair en Silver"
-    results[("meteo", "dim_meteo_distrito")] = f"SALTADO ({motivo})"
-    results[("calair", "dim_calair_distrito")] = f"SALTADO ({motivo})"
-    print(f"[SALTADO] dim_distrito_geo: {motivo}")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 3. Hechos que dependen de las dimensiones anteriores
+# MAGIC ## 2. Hechos que dependen de las dimensiones anteriores
 
 # COMMAND ----------
 
@@ -150,10 +117,10 @@ run_silver("trafico", "trafico_historico", requires=[("trafico", "dim_trafico")]
 run_silver("trafico", "trafico_nrt", requires=[("trafico", "dim_trafico")])
 run_silver("accidentes", "accidentes_historico", requires=[("trafico", "dim_distritos")])
 run_silver("eventos", "eventos_culturales", requires=[("trafico", "dim_distritos")])
-run_silver("meteo", "meteo_nrt", requires=[("meteo", "dim_meteo_distrito")])
-run_silver("meteo", "meteo_historico", requires=[("meteo", "dim_meteo_distrito")])
-run_silver("calair", "calair_nrt", requires=[("calair", "dim_calair_distrito")])
-run_silver("calair", "calair_historico", requires=[("calair", "dim_calair_distrito")])
+run_silver("meteo", "meteo_nrt", requires=[("meteo", "dim_meteo")])
+run_silver("meteo", "meteo_historico", requires=[("meteo", "dim_meteo")])
+run_silver("calair", "calair_nrt", requires=[("calair", "dim_calair")])
+run_silver("calair", "calair_historico", requires=[("calair", "dim_calair")])
 
 # COMMAND ----------
 

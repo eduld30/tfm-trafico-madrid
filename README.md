@@ -104,7 +104,7 @@ dispone de:
 normalize_column_names, rename, select, drop, cast, trim, upper,
 strip_accents, empty_to_null, replace_values, regex_replace, filter,
 add_literal, parse_timestamp, parse_date, hourly_wide_to_long,
-deduplicate, lookup_join
+deduplicate, lookup_join, assign_district
 ```
 
 Las transformaciones se ejecutan en el orden declarado. `lookup_join` resuelve
@@ -182,6 +182,19 @@ El tráfico NRT usa Auto Loader con `cloudFiles.format=xml`. El lector traduce
 `row_tag` a `rowTag` y permite declarar `record_path` y `parent_columns` para
 expandir los registros XML antes de escribir Bronze. El runtime debe incluir
 soporte XML, nativo en versiones recientes de Databricks Runtime.
+
+## Enriquecimiento geográfico de estaciones
+
+El paquete incluye como recurso estático el KML oficial con los 21 distritos de
+Madrid. La transformación Silver `assign_district` utiliza Shapely en el driver
+para añadir `distrito_cod` y `distrito_nombre` directamente a `dim_meteo` y
+`dim_calair`. Es una operación deliberadamente acotada a dimensiones de pocas
+decenas de estaciones; no requiere procesamiento espacial distribuido.
+
+Una estación fuera de los polígonos o situada de forma ambigua sobre una
+frontera provoca un error claro; no se aproxima silenciosamente al distrito más
+cercano. Los hechos meteorológicos y de calidad del aire consultan después sus
+respectivas dimensiones de estaciones mediante `lookup_join`.
 
 ## Validación local
 

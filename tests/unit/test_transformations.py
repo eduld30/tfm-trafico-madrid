@@ -42,6 +42,7 @@ def test_registry_contains_the_declared_initial_transformations():
         "hourly_wide_to_long",
         "deduplicate",
         "lookup_join",
+        "assign_district",
     }
 
 

@@ -79,6 +79,23 @@ def test_hourly_wide_to_long_validates_hour_range():
         )
 
 
+def test_assign_district_requires_its_column_contract():
+    with pytest.raises(ValidationError, match="station_key"):
+        TransformationConfig(type="assign_district")
+
+
+def test_assign_district_rejects_equal_output_columns():
+    with pytest.raises(ValidationError, match="columnas de código y nombre distintas"):
+        TransformationConfig(
+            type="assign_district",
+            station_key="codigo_corto",
+            longitude_column="longitud",
+            latitude_column="latitud",
+            district_code_column="distrito",
+            district_name_column="distrito",
+        )
+
+
 def test_source_rejects_duplicate_datasets():
     dataset = DatasetConfig(
         name="dataset",
