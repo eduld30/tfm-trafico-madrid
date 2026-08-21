@@ -5,10 +5,10 @@
     "factoryName": {
       "value": "adfprotfmtraficomadrid"
     },
-    "storageAccountUrl": {
+    "ls_adls_properties_typeProperties_storageAccountUrl": {
       "value": "https://staprotfmtraficomadrid.dfs.core.windows.net/"
     },
-    "keyVaultBaseUrl": {
+    "ls_key_vault_properties_typeProperties_keyVaultBaseUrl": {
       "value": "https://kvprotfmtraficomadrid.vault.azure.net/"
     }
   }

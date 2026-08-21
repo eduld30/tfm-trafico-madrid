@@ -210,8 +210,66 @@ dimensiones desde sus transformaciones Silver.
 
 La versión del artefacto se hace dinámica en cada despliegue para que serverless
 no reutilice un wheel anterior con el mismo número de versión del proyecto.
-La integración con ADF y los calendarios se mantienen fuera de esta primera
-iteración.
+La invocación de los jobs desde ADF y sus calendarios se mantienen fuera de
+esta iteración. El despliegue de los recursos de ADF y del bundle sí está
+automatizado mediante GitHub Actions.
+
+## CI/CD
+
+El workflow `.github/workflows/ci-cd.yml` aplica un flujo de promoción entre
+los dos entornos:
+
+- Una pull request hacia `develop` valida ADF y el Asset Bundle para `dev`.
+- Un push o merge en `develop` despliega ADF y Databricks en `dev`.
+- Una pull request hacia `main` valida ambos componentes para `pro`.
+- Un push o merge en `main` despliega ADF y Databricks en `pro`.
+- `workflow_dispatch` usa el entorno asociado a la rama desde la que se lance.
+
+En todos los casos también se ejecutan lint, tests y build del paquete. Los
+despliegues de ADF y Databricks comienzan en paralelo únicamente cuando todas
+las validaciones han finalizado correctamente.
+
+La autenticación usa GitHub OIDC y una identidad administrada de Azure, sin
+client secret ni token personal de Databricks. El workflow espera estas
+variables de repositorio en GitHub:
+
+```text
+AZURE_CLIENT_ID
+AZURE_TENANT_ID
+AZURE_SUBSCRIPTION_ID
+DEV_RESOURCE_GROUP
+DEV_FACTORY_NAME
+DEV_DATABRICKS_HOST
+PRO_RESOURCE_GROUP
+PRO_FACTORY_NAME
+PRO_DATABRICKS_HOST
+```
+
+Si ambos entornos usan el mismo workspace, `DEV_DATABRICKS_HOST` y
+`PRO_DATABRICKS_HOST` tendrán el mismo valor. La separación de datos sigue
+estando garantizada por los catálogos y rutas declarados en cada entorno.
+
+La identidad debe tener tres credenciales federadas para el repositorio
+`eduld30/tfm-trafico-madrid`: una de tipo **Pull request**, otra de tipo
+**Branch** para `develop` y otra de tipo **Branch** para `main`. En el formulario
+de Azure, el ID de la organización es `95371349` y el ID del repositorio es
+`1304265160`. Conviene usar el formulario de GitHub Actions para que Azure genere
+el sujeto OIDC, incluido su formato inmutable, en lugar de escribirlo
+manualmente. No se asocia un GitHub Environment a los jobs porque eso haría que
+el sujeto estuviera ligado al entorno en lugar de a la rama o pull request.
+
+Para ADF, la identidad necesita `Data Factory Contributor` sobre los grupos de
+recursos de las dos factorías, ya que el workflow crea el ARM deployment en
+esos ámbitos. Para Databricks, la misma identidad debe estar añadida al
+workspace como service principal y disponer de acceso al workspace, a los
+catálogos Bronze y Silver de ambos entornos, y a las ubicaciones externas
+utilizadas por el motor.
+
+El export de ADF se genera con la utilidad oficial fijada en `package-lock.json`.
+Antes y después del despliegue se usa la versión fijada por commit del script
+oficial de Microsoft para detener los triggers modificados, limpiar recursos
+eliminados y recuperar su estado. Si falla el ARM deployment, el workflow
+reactiva los triggers que estaban en ejecución antes de comenzar.
 
 ## API Python
 
