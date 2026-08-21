@@ -1,12 +1,12 @@
 {
-	"name": "tr_trafico_hist",
+	"name": "tr_trafico_historico",
 	"properties": {
 		"annotations": [],
 		"runtimeState": "Stopped",
 		"pipelines": [
 			{
 				"pipelineReference": {
-					"referenceName": "pl_ingest_trafico_hist",
+					"referenceName": "pl_ingest_trafico_historico",
 					"type": "PipelineReference"
 				}
 			}
