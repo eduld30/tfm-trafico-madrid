@@ -20,6 +20,7 @@ databricks = [
     "delta-spark>=3,<4",
 ]
 dev = [
+    "build>=1,<2",
     "pytest>=8,<9",
     "ruff>=0.5",
 ]

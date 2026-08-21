@@ -118,6 +118,25 @@ Evitar:
 - UDFs Python cuando exista una función Spark equivalente.
 - Acciones innecesarias como `count()` únicamente para logging.
 
+### 3.7 Pruebas orientadas a comportamiento
+
+Las pruebas automatizadas deben comprobar principalmente la funcionalidad del
+código y los invariantes que el motor necesita para operar correctamente.
+
+No crear pruebas que congelen decisiones de configuración susceptibles de
+cambiar durante la evolución del proyecto, por ejemplo:
+
+- El valor concreto de `overwrite_schema` de un dataset.
+- La presencia o ausencia de calendarios en los jobs.
+- El uso de serverless, un clúster existente u otro tipo de compute.
+- El número exacto de fuentes, datasets o jobs configurados.
+- Opciones operativas concretas de un entorno o workflow.
+
+Las configuraciones deben validarse mediante sus modelos, los validadores del
+motor y, cuando corresponda, las herramientas nativas como
+`databricks bundle validate`. Reservar los tests sobre configuración para
+contratos importantes, casi estáticos y necesarios para la corrección funcional.
+
 ---
 
 ## 4. Fuentes de datos

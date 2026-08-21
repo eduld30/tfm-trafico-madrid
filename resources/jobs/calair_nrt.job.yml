@@ -1,0 +1,55 @@
+resources:
+  jobs:
+    ingesta_calair_nrt:
+      name: madrid-ingestion-calair-nrt
+      description: "Ingesta manual Bronze y Silver de calidad del aire NRT"
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: brz_calair_nrt
+          environment_key: default
+          python_wheel_task:
+            package_name: madrid_ingestion
+            entry_point: madrid-ingestion
+            parameters:
+              - run
+              - --env
+              - ${var.environment}
+              - --layer
+              - bronze
+              - --source
+              - calair
+              - --dataset
+              - calair_nrt
+              - --run-id
+              - "{{job.run_id}}"
+              - --config-root
+              - ${workspace.file_path}/conf
+
+        - task_key: slv_calair_nrt
+          depends_on:
+            - task_key: brz_calair_nrt
+          environment_key: default
+          python_wheel_task:
+            package_name: madrid_ingestion
+            entry_point: madrid-ingestion
+            parameters:
+              - run
+              - --env
+              - ${var.environment}
+              - --layer
+              - silver
+              - --source
+              - calair
+              - --dataset
+              - calair_nrt
+              - --run-id
+              - "{{job.run_id}}"
+              - --config-root
+              - ${workspace.file_path}/conf
+
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "4"
+            dependencies:
+              - ../../dist/*.whl

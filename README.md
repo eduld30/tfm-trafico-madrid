@@ -159,6 +159,50 @@ python -m madrid_ingestion run --env dev --layer bronze --all
 `--dataset`, se ejecutan los datasets habilitados de la fuente. `--all` no se
 puede combinar con `--source` ni `--dataset`.
 
+## Databricks Asset Bundle
+
+El repositorio incluye un bundle para desplegar nueve jobs de ejecución manual:
+
+```text
+ingesta_dimensiones
+ingesta_trafico_nrt
+ingesta_meteo_nrt
+ingesta_calair_nrt
+ingesta_eventos
+ingesta_trafico_historico
+ingesta_accidentes_historico
+ingesta_meteo_historico
+ingesta_calair_historico
+```
+
+Cada dataset se ejecuta mediante dos tareas `python_wheel_task` con dependencia
+explícita `Bronze -> Silver`. Los jobs no tienen calendario, `run_as` ni clúster
+asignado: utilizan serverless compute con el entorno `default`. En el job de
+dimensiones, las seis ramas se ejecutan en paralelo y cada tarea Silver depende
+únicamente de la carga Bronze de su propio dataset.
+
+El bundle construye el wheel del paquete, sincroniza `conf/` y despliega los
+targets lógicos `dev` y `pro`. Para preparar el entorno local y desplegar en
+desarrollo:
+
+```bash
+python -m pip install -e ".[dev]"
+databricks auth login --host https://<workspace>.azuredatabricks.net
+databricks bundle validate -t dev
+databricks bundle deploy -t dev
+```
+
+Si se utiliza un perfil distinto del predeterminado, añadir
+`--profile <perfil>` a los comandos del bundle. Tras el despliegue, los jobs se
+pueden lanzar desde `Workflows > Jobs & Pipelines` en la UI de Databricks.
+Ejecutar primero `ingesta_dimensiones`; los restantes jobs consultan esas
+dimensiones desde sus transformaciones Silver.
+
+La versión del artefacto se hace dinámica en cada despliegue para que serverless
+no reutilice un wheel anterior con el mismo número de versión del proyecto.
+La integración con ADF y los calendarios se mantienen fuera de esta primera
+iteración.
+
 ## API Python
 
 ```python
