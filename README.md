@@ -42,12 +42,12 @@ las dimensiones aparecen antes que los datasets que las consultan.
 | `trafico` | `dim_distritos` | CSV | `overwrite` |
 | `trafico` | `trafico_historico` | CSV | `merge` |
 | `trafico` | `trafico_nrt` | XML | `merge` |
-| `accidentes` | `accidentes_historico` | CSV | `overwrite` |
+| `accidentes` | `accidentes_historico` | CSV | `replace_partitions` por año |
 | `meteo` | `dim_meteo` | CSV | `overwrite` |
 | `meteo` | `dim_meteo_magnitudes` | CSV | `overwrite` |
 | `meteo` | `meteo_nrt` | CSV | `merge` |
 | `meteo` | `meteo_historico` | CSV | `merge` |
-| `eventos` | `eventos_culturales` | CSV | `overwrite` |
+| `eventos` | `eventos_culturales` | CSV | `merge` |
 | `calair` | `dim_calair` | CSV | `overwrite` |
 | `calair` | `dim_calair_magnitudes` | CSV | `overwrite` |
 | `calair` | `calair_nrt` | CSV | `merge` |
@@ -75,6 +75,10 @@ Silver. Si no hay filas nuevas, finaliza sin escribir.
 - `append`: añade el lote nuevo.
 - `overwrite`: dentro del lote nuevo selecciona el mayor `_file_date` y usa esa
   versión completa para sustituir Silver.
+- `replace_partitions`: conserva la fotografía con mayor `_file_date` de cada
+  partición recibida y reemplaza esas particiones mediante `replaceWhere`. Se
+  utiliza en accidentes para renovar el año en curso sin borrar años anteriores
+  ni deduplicar personas implicadas.
 
 Silver añade además `_silver_processed_timestamp`. El diseño presupone una sola
 versión completa por dataset y fecha para las cargas `overwrite`.
@@ -103,13 +107,19 @@ dispone de:
 ```text
 normalize_column_names, rename, select, drop, cast, trim, upper,
 strip_accents, empty_to_null, replace_values, regex_replace, filter,
-add_literal, parse_timestamp, parse_date, hourly_wide_to_long,
+add_literal, parse_timestamp, parse_date, extract_year, hourly_wide_to_long,
 deduplicate, lookup_join, assign_district
 ```
 
 Las transformaciones se ejecutan en el orden declarado. `lookup_join` resuelve
 tablas Bronze o Silver mediante catálogo, fuente y dataset; el mapa `select`
 define `columna_destino: columna_lookup`.
+
+Al adoptar `replace_partitions`, una tabla ya creada sin particionar no puede
+convertirse en particionada mediante una escritura incremental. La primera
+ejecución de `accidentes.accidentes_historico` requiere eliminar explícitamente
+el registro Silver anterior y su ruta física para reconstruirla particionada por
+`anio_accidente`. No es necesario reiniciar Bronze ni su checkpoint.
 
 ## Instalación
 

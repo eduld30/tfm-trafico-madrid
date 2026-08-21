@@ -190,6 +190,16 @@ def parse_date(df: Any, config: TransformationConfig, context: RunContext) -> An
     )
 
 
+def extract_year(df: Any, config: TransformationConfig, context: RunContext) -> Any:
+    """Extrae el año de una fecha o timestamp en una columna entera."""
+    del context
+    assert config.source_column is not None and config.target_column is not None
+    _require_columns(df, [config.source_column], config.type)
+    from pyspark.sql import functions as F
+
+    return df.withColumn(config.target_column, F.year(F.col(config.source_column)))
+
+
 def hourly_wide_to_long(
     df: Any, config: TransformationConfig, context: RunContext
 ) -> Any:
@@ -379,6 +389,7 @@ TRANSFORMATIONS: dict[str, TransformationFunction] = {
     "add_literal": add_literal,
     "parse_timestamp": parse_timestamp,
     "parse_date": parse_date,
+    "extract_year": extract_year,
     "hourly_wide_to_long": hourly_wide_to_long,
     "deduplicate": deduplicate,
     "lookup_join": lookup_join,

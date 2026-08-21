@@ -21,11 +21,13 @@ datasets:
       transformations:
         - type: normalize_column_names
     silver:
-      # No existe un identificador de persona implicada; overwrite conserva
-      # filas legítimamente repetidas sin inventar una clave de merge.
+      # Cada fichero es una fotografía anual completa. Se reemplaza solo el
+      # año afectado para conservar el histórico y las filas de implicados.
       enabled: true
       target_path: "accidentes/accidentes_historico"
-      write_strategy: overwrite
+      write_strategy: replace_partitions
+      partition_by:
+        - anio_accidente
       transformations:
         - type: empty_to_null
           columns:
@@ -60,6 +62,11 @@ datasets:
           source_column: fecha
           target_column: fecha
           format: "dd/MM/yyyy"
+        - type: extract_year
+          source_column: fecha
+          target_column: anio_accidente
+        - type: filter
+          condition: "anio_accidente IS NOT NULL"
         - type: regex_replace
           columns:
             - coordenada_x_utm

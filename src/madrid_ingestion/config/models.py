@@ -26,6 +26,7 @@ SUPPORTED_TRANSFORMATIONS = frozenset(
         "add_literal",
         "parse_timestamp",
         "parse_date",
+        "extract_year",
         "hourly_wide_to_long",
         "deduplicate",
         "lookup_join",
@@ -214,6 +215,7 @@ class TransformationConfig(StrictModel):
             "add_literal": ("column",),
             "parse_timestamp": ("target_column", "format"),
             "parse_date": ("source_column", "target_column", "format"),
+            "extract_year": ("source_column", "target_column"),
             "hourly_wide_to_long": (
                 "year_column",
                 "month_column",
@@ -299,7 +301,7 @@ class SilverSourceConfig(StrictModel):
 class SilverConfig(StrictModel):
     enabled: bool = True
     target_path: str
-    write_strategy: Literal["overwrite", "merge", "append"]
+    write_strategy: Literal["overwrite", "merge", "append", "replace_partitions"]
     business_keys: list[str] = Field(default_factory=list)
     partition_by: list[str] = Field(default_factory=list)
     transformations: list[TransformationConfig] = Field(default_factory=list)
@@ -315,8 +317,14 @@ class SilverConfig(StrictModel):
     def validate_strategy(self) -> SilverConfig:
         if self.write_strategy == "merge" and not self.business_keys:
             raise ValueError("write_strategy='merge' requiere business_keys.")
+        if self.write_strategy == "replace_partitions" and not self.partition_by:
+            raise ValueError(
+                "write_strategy='replace_partitions' requiere partition_by."
+            )
         if len(self.business_keys) != len(set(self.business_keys)):
             raise ValueError("business_keys contiene valores duplicados.")
+        if len(self.partition_by) != len(set(self.partition_by)):
+            raise ValueError("partition_by contiene valores duplicados.")
         return self
 
 

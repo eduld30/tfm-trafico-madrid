@@ -1,9 +1,14 @@
+import sys
 from datetime import date, datetime
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
 from madrid_ingestion.core.exceptions import IngestionError
-from madrid_ingestion.silver.processor import _read_incremental_bronze
+from madrid_ingestion.silver.processor import (
+    _keep_latest_partition_snapshots,
+    _read_incremental_bronze,
+)
 
 
 class FakeCondition:
@@ -21,7 +26,32 @@ class FakeColumn:
         return FakeCondition(self.name, "gt", value)
 
     def __eq__(self, value):
+        if isinstance(value, FakeColumn):
+            return FakeCondition(self.name, "eq_column", value.name)
         return FakeCondition(self.name, "eq", value)
+
+    def isNull(self):
+        return FakeCondition(self.name, "is_null", None)
+
+
+class FakeWindowMaximum:
+    def __init__(self, column, partitions):
+        self.column = column
+        self.partitions = partitions
+
+
+class FakeMaximum:
+    def __init__(self, column):
+        self.column = column
+
+    def over(self, partitions):
+        return FakeWindowMaximum(self.column, partitions)
+
+
+class FakeWindow:
+    @staticmethod
+    def partitionBy(*columns):
+        return columns
 
 
 class FakeAggregation:
@@ -51,11 +81,50 @@ class FakeDataFrame:
             rows = [
                 row for row in self.rows if row[condition.column] > condition.value
             ]
-        else:
+        elif condition.operator == "eq":
             rows = [
                 row for row in self.rows if row[condition.column] == condition.value
             ]
+        elif condition.operator == "eq_column":
+            rows = [
+                row
+                for row in self.rows
+                if row[condition.column] == row[condition.value]
+            ]
+        else:
+            rows = [row for row in self.rows if row[condition.column] is None]
         return FakeDataFrame(rows)
+
+    def limit(self, amount):
+        return FakeDataFrame(self.rows[:amount])
+
+    def withColumn(self, column, expression):
+        assert isinstance(expression, FakeWindowMaximum)
+        maxima = {}
+        for row in self.rows:
+            key = tuple(row[name] for name in expression.partitions)
+            value = row[expression.column]
+            maxima[key] = max(maxima.get(key, value), value)
+        return FakeDataFrame(
+            [
+                {
+                    **row,
+                    column: maxima[
+                        tuple(row[name] for name in expression.partitions)
+                    ],
+                }
+                for row in self.rows
+            ]
+        )
+
+    def drop(self, column):
+        return FakeDataFrame(
+            [{name: value for name, value in row.items() if name != column} for row in self.rows]
+        )
+
+    @property
+    def columns(self):
+        return list(self.rows[0]) if self.rows else []
 
     def isEmpty(self):
         return not self.rows
@@ -140,3 +209,28 @@ def test_overwrite_rejects_rows_without_file_date():
 
     with pytest.raises(IngestionError, match="_file_date"):
         _read_incremental_bronze(FakeSpark(), bronze, FakeContext(), "overwrite")
+
+def test_partition_replacement_keeps_latest_snapshot_and_all_its_rows(monkeypatch):
+    functions = SimpleNamespace(
+        col=lambda name: FakeColumn(name),
+        max=lambda column: FakeMaximum(column.name),
+    )
+    pyspark_module = ModuleType("pyspark")
+    sql_module = ModuleType("pyspark.sql")
+    sql_module.Window = FakeWindow
+    sql_module.functions = functions
+    monkeypatch.setitem(sys.modules, "pyspark", pyspark_module)
+    monkeypatch.setitem(sys.modules, "pyspark.sql", sql_module)
+
+    older = date(2026, 7, 1)
+    newer = date(2026, 8, 1)
+    rows = [
+        {"anio": 2025, "persona": "A", "_file_date": older},
+        {"anio": 2026, "persona": "B", "_file_date": older},
+        {"anio": 2026, "persona": "C", "_file_date": newer},
+        {"anio": 2026, "persona": "C", "_file_date": newer},
+    ]
+
+    result = _keep_latest_partition_snapshots(FakeDataFrame(rows), ["anio"])
+
+    assert result.rows == [rows[0], rows[2], rows[3]]

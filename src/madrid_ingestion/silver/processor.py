@@ -11,6 +11,36 @@ from madrid_ingestion.silver.transformations import apply_transformations
 from madrid_ingestion.silver.writers import write_silver
 
 
+def _keep_latest_partition_snapshots(df: Any, partition_by: list[str]) -> Any:
+    """Conserva la fotografía de fichero más reciente de cada partición."""
+    required_columns = {*partition_by, "_file_date"}
+    missing = sorted(required_columns.difference(df.columns))
+    if missing:
+        raise IngestionError(
+            "replace_partitions requiere las columnas: " + ", ".join(missing) + "."
+        )
+
+    from pyspark.sql import Window
+    from pyspark.sql import functions as F
+
+    if not df.filter(F.col("_file_date").isNull()).limit(1).isEmpty():
+        raise IngestionError(
+            "replace_partitions requiere _file_date informado en todas las filas."
+        )
+
+    marker = "__madrid_ingestion_latest_file_date"
+    if marker in df.columns:
+        raise IngestionError(
+            f"replace_partitions: columna reservada ya existente: {marker}."
+        )
+    window = Window.partitionBy(*partition_by)
+    return (
+        df.withColumn(marker, F.max(F.col("_file_date")).over(window))
+        .filter(F.col("_file_date") == F.col(marker))
+        .drop(marker)
+    )
+
+
 def _read_incremental_bronze(
     spark: Any, bronze_df: Any, context: RunContext, strategy: str
 ) -> Any | None:
@@ -54,6 +84,10 @@ def process_silver(spark: Any, context: RunContext, config: SilverConfig) -> Non
     transformed_df = apply_transformations(
         incremental_df, config.transformations, context
     )
+    if config.write_strategy == "replace_partitions":
+        transformed_df = _keep_latest_partition_snapshots(
+            transformed_df, config.partition_by
+        )
     if "_silver_processed_timestamp" in transformed_df.columns:
         raise IngestionError(
             "La columna de origen colisiona con _silver_processed_timestamp."

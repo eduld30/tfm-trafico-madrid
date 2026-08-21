@@ -38,6 +38,11 @@ def test_append_uses_the_common_incremental_processing():
     assert config.write_strategy == "append"
 
 
+def test_replace_partitions_requires_partition_columns():
+    with pytest.raises(ValidationError, match="partition_by"):
+        silver(write_strategy="replace_partitions")
+
+
 def test_unknown_transformation_fails_early():
     with pytest.raises(ValidationError, match="no soportada"):
         TransformationConfig(type="python_eval")

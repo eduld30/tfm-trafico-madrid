@@ -889,7 +889,7 @@ Silver debe:
 5. Tratar vacíos y nulos cuando se configure.
 6. Deduplicar.
 7. Enriquecer mediante dimensiones cuando se configure.
-8. Escribir mediante `merge`, `overwrite` o `append`.
+8. Escribir mediante `merge`, `overwrite`, `append` o `replace_partitions`.
 9. Registrar la tabla externa en el catálogo Silver.
 
 Silver no debe leer directamente desde `landing`.
@@ -1166,6 +1166,24 @@ silver:
 
 Si `append` no declara estrategia incremental, la validación debe fallar. No hacer `append` de toda la tabla Bronze en cada ejecución.
 
+### 15.4 `replace_partitions`
+
+Adecuada para fotografías completas de una partición de baja cardinalidad cuando
+no existe una clave estable al nivel de fila. El motor conserva la fotografía
+con mayor `_file_date` de cada partición recibida y utiliza `replaceWhere` para
+reemplazarla atómicamente sin afectar al resto de particiones.
+
+```yaml
+silver:
+  write_strategy: replace_partitions
+  partition_by:
+    - anio_accidente
+```
+
+Los identificadores de las particiones afectadas pueden obtenerse en el driver
+porque constituyen metadatos de control acotados; no se deben recopilar las filas
+del dataset. La estrategia debe fallar si no se configura `partition_by`.
+
 ---
 
 ## 16. Estrategias recomendadas por dataset
@@ -1178,12 +1196,12 @@ Las claves definitivas deben confirmarse tras inspeccionar los esquemas reales.
 | `trafico.trafico_nrt` | `merge` | Datos frecuentes con posible repetición |
 | `trafico.dim_trafico` | `overwrite` | Dimensión puntual y pequeña |
 | `trafico.dim_distritos` | `overwrite` | Dimensión estática |
-| `accidentes.historico_accidentes` | `merge` | Histórico mensual |
+| `accidentes.accidentes_historico` | `replace_partitions` | Fotografía anual actualizada mensualmente, sin identificador de implicado |
 | `meteorologia.meteo_nrt` | `merge` | Datos frecuentes |
 | `meteorologia.meteo_historico` | `merge` | Histórico mensual |
 | `meteorologia.dim_meteo` | `overwrite` | Dimensión puntual |
 | `meteorologia.dim_magnitudes_meteo` | `overwrite` | Catálogo estático |
-| `eventos.eventos_culturales` | `overwrite` | Ventana móvil de próximos 100 días |
+| `eventos.eventos_culturales` | `merge` | Actualización incremental por `id_evento` |
 | `calidad_aire.calidad_aire_nrt` | `merge` | Datos frecuentes |
 | `calidad_aire.calidad_aire_historico` | `merge` | Histórico mensual |
 | `calidad_aire.dim_calair` | `overwrite` | Dimensión puntual |
