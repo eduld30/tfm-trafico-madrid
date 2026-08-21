@@ -1,13 +1,14 @@
 {
-	"name": "pl_ingest_meteo_horario",
+	"name": "pl_ingest_meteo_historico",
 	"properties": {
 		"activities": [
 			{
-				"name": "copy_meteo_horario",
+				"name": "copy_meteo_historico",
 				"type": "Copy",
 				"dependsOn": [],
 				"policy": {
 					"timeout": "0.00:10:00",
+					"retry": 3,
 					"retryIntervalInSeconds": 30
 				},
 				"userProperties": [],
@@ -18,6 +19,9 @@
 							"type": "HttpReadSettings",
 							"relativeUrl": "/dataset/300352-0-meteorologicos-horarios/resource/300352-2-meteorologicos-horarios-csv/download/300352-2-meteorologicos-horarios-csv.csv",
 							"requestMethod": "GET"
+						},
+						"formatSettings": {
+							"type": "BinaryReadSettings"
 						}
 					},
 					"sink": {
@@ -41,10 +45,13 @@
 						"type": "DatasetReference",
 						"parameters": {
 							"p_directory": {
-								"value": "@concat('meteo/meteo_horario/',formatDateTime(utcNow(),'yyyy'),'/',formatDateTime(utcNow(),'MM'))",
+								"value": "@concat('meteo/meteo_historico/',formatDateTime(utcNow(),'yyyy'),'/',formatDateTime(utcNow(),'MM'),'/',formatDateTime(utcNow(),'dd'))",
 								"type": "Expression"
 							},
-							"p_filename": "meteo_horario_@{formatDateTime(utcNow(),'yyyyMM')}.csv"
+							"p_filename": {
+								"value": "meteo_historico_@{formatDateTime(utcNow(),'yyyyMMdd')}.csv",
+								"type": "Expression"
+							}
 						}
 					}
 				]
