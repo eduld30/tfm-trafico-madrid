@@ -1,13 +1,14 @@
 {
-	"name": "pl_ingest_calair_horario",
+	"name": "pl_ingest_calair_historico",
 	"properties": {
 		"activities": [
 			{
-				"name": "copy_calair_horario",
+				"name": "copy_calair_historico",
 				"type": "Copy",
 				"dependsOn": [],
 				"policy": {
 					"timeout": "0.00:10:00",
+					"retry": 3,
 					"retryIntervalInSeconds": 30
 				},
 				"userProperties": [],
@@ -18,6 +19,9 @@
 							"type": "HttpReadSettings",
 							"relativeUrl": "/dataset/201200-0-calidad-aire-horario/resource/201200-1-calidad-aire-horario-csv/download/201200-1-calidad-aire-horario-csv.csv",
 							"requestMethod": "GET"
+						},
+						"formatSettings": {
+							"type": "BinaryReadSettings"
 						}
 					},
 					"sink": {
@@ -41,10 +45,13 @@
 						"type": "DatasetReference",
 						"parameters": {
 							"p_directory": {
-								"value": "@concat('calair/calair_horario/',formatDateTime(utcNow(),'yyyy'),'/',formatDateTime(utcNow(),'MM'))",
+								"value": "@concat('calair/calair_historico/',formatDateTime(utcNow(),'yyyy'),'/',formatDateTime(utcNow(),'MM'),'/',formatDateTime(utcNow(),'dd'))",
 								"type": "Expression"
 							},
-							"p_filename": "calair_horario_@{formatDateTime(utcNow(),'yyyyMM')}.csv"
+							"p_filename": {
+								"value": "calair_historico_@{formatDateTime(utcNow(),'yyyyMMdd')}.csv",
+								"type": "Expression"
+							}
 						}
 					}
 				]

@@ -1,12 +1,12 @@
 {
-	"name": "tr_calair_horario",
+	"name": "tr_calair_historico",
 	"properties": {
 		"annotations": [],
 		"runtimeState": "Stopped",
 		"pipelines": [
 			{
 				"pipelineReference": {
-					"referenceName": "pl_ingest_calair_horario",
+					"referenceName": "pl_ingest_calair_historico",
 					"type": "PipelineReference"
 				}
 			}
