@@ -23,10 +23,13 @@ datasets:
     silver:
       enabled: true
       target_path: "eventos/eventos_culturales"
-      write_strategy: overwrite
+      write_strategy: merge
+      business_keys:
+        - id_evento
       transformations:
         - type: empty_to_null
           columns:
+            - id_evento
             - precio
             - dias_semana
             - dias_excluidos
@@ -69,6 +72,8 @@ datasets:
             coordenada_y: double
             latitud: double
             longitud: double
+        - type: filter
+          condition: "id_evento IS NOT NULL"
         - type: trim
           columns:
             - titulo
@@ -107,3 +112,9 @@ datasets:
           select:
             distrito_normalizado: nombre
             distrito_cod: cod_dis
+        - type: deduplicate
+          keys:
+            - id_evento
+          order_by:
+            - column: _ingestion_timestamp
+              direction: desc

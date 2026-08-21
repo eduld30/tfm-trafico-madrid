@@ -118,6 +118,25 @@ Evitar:
 - UDFs Python cuando exista una función Spark equivalente.
 - Acciones innecesarias como `count()` únicamente para logging.
 
+### 3.7 Pruebas orientadas a comportamiento
+
+Las pruebas automatizadas deben comprobar principalmente la funcionalidad del
+código y los invariantes que el motor necesita para operar correctamente.
+
+No crear pruebas que congelen decisiones de configuración susceptibles de
+cambiar durante la evolución del proyecto, por ejemplo:
+
+- El valor concreto de `overwrite_schema` de un dataset.
+- La presencia o ausencia de calendarios en los jobs.
+- El uso de serverless, un clúster existente u otro tipo de compute.
+- El número exacto de fuentes, datasets o jobs configurados.
+- Opciones operativas concretas de un entorno o workflow.
+
+Las configuraciones deben validarse mediante sus modelos, los validadores del
+motor y, cuando corresponda, las herramientas nativas como
+`databricks bundle validate`. Reservar los tests sobre configuración para
+contratos importantes, casi estáticos y necesarios para la corrección funcional.
+
 ---
 
 ## 4. Fuentes de datos
@@ -455,6 +474,12 @@ madrid-ingestion/
 │       │   ├── base.py
 │       │   ├── csv_reader.py
 │       │   └── xml_reader.py
+│       ├── geospatial/
+│       │   ├── __init__.py
+│       │   └── districts.py
+│       ├── resources/
+│       │   ├── __init__.py
+│       │   └── distritos.kml
 │       ├── writers/
 │       │   ├── __init__.py
 │       │   ├── delta_writer.py
@@ -482,6 +507,7 @@ pyspark
 APIs Delta disponibles en Databricks
 PyYAML
 pydantic
+shapely
 ```
 
 Dependencias de desarrollo opcionales:
@@ -863,7 +889,7 @@ Silver debe:
 5. Tratar vacíos y nulos cuando se configure.
 6. Deduplicar.
 7. Enriquecer mediante dimensiones cuando se configure.
-8. Escribir mediante `merge`, `overwrite` o `append`.
+8. Escribir mediante `merge`, `overwrite`, `append` o `replace_partitions`.
 9. Registrar la tabla externa en el catálogo Silver.
 
 Silver no debe leer directamente desde `landing`.
@@ -1041,6 +1067,27 @@ Necesaria para mapear estaciones o puntos de medida a distritos.
 
 El motor resolverá el nombre completo de la tabla. No implementar un lenguaje genérico de joins arbitrarios en la primera versión.
 
+#### `assign_district`
+
+Transformación acotada a las pequeñas dimensiones de estaciones meteorológicas
+y de calidad del aire. Utiliza el KML estático versionado dentro del paquete y
+añade el código y el nombre del distrito directamente a la dimensión Silver.
+
+```yaml
+- type: assign_district
+  station_key: codigo_corto
+  longitude_column: longitud
+  latitude_column: latitud
+  district_code_column: distrito_cod
+  district_name_column: distrito_nombre
+```
+
+El KML del proyecto contiene exactamente 21 contornos cerrados, uno por
+distrito. La implementación debe validar ese contrato y fallar si una estación
+no pertenece de forma unívoca a un distrito. No aproximar automáticamente al
+distrito más cercano. El uso de `collect()` queda permitido únicamente para
+estas dimensiones acotadas de pocas decenas de estaciones.
+
 ### 14.5 Metadatos Silver
 
 Conservar metadatos técnicos útiles:
@@ -1119,6 +1166,24 @@ silver:
 
 Si `append` no declara estrategia incremental, la validación debe fallar. No hacer `append` de toda la tabla Bronze en cada ejecución.
 
+### 15.4 `replace_partitions`
+
+Adecuada para fotografías completas de una partición de baja cardinalidad cuando
+no existe una clave estable al nivel de fila. El motor conserva la fotografía
+con mayor `_file_date` de cada partición recibida y utiliza `replaceWhere` para
+reemplazarla atómicamente sin afectar al resto de particiones.
+
+```yaml
+silver:
+  write_strategy: replace_partitions
+  partition_by:
+    - anio_accidente
+```
+
+Los identificadores de las particiones afectadas pueden obtenerse en el driver
+porque constituyen metadatos de control acotados; no se deben recopilar las filas
+del dataset. La estrategia debe fallar si no se configura `partition_by`.
+
 ---
 
 ## 16. Estrategias recomendadas por dataset
@@ -1131,12 +1196,12 @@ Las claves definitivas deben confirmarse tras inspeccionar los esquemas reales.
 | `trafico.trafico_nrt` | `merge` | Datos frecuentes con posible repetición |
 | `trafico.dim_trafico` | `overwrite` | Dimensión puntual y pequeña |
 | `trafico.dim_distritos` | `overwrite` | Dimensión estática |
-| `accidentes.historico_accidentes` | `merge` | Histórico mensual |
+| `accidentes.accidentes_historico` | `replace_partitions` | Fotografía anual actualizada mensualmente, sin identificador de implicado |
 | `meteorologia.meteo_nrt` | `merge` | Datos frecuentes |
 | `meteorologia.meteo_historico` | `merge` | Histórico mensual |
 | `meteorologia.dim_meteo` | `overwrite` | Dimensión puntual |
 | `meteorologia.dim_magnitudes_meteo` | `overwrite` | Catálogo estático |
-| `eventos.eventos_culturales` | `overwrite` | Ventana móvil de próximos 100 días |
+| `eventos.eventos_culturales` | `merge` | Actualización incremental por `id_evento` |
 | `calidad_aire.calidad_aire_nrt` | `merge` | Datos frecuentes |
 | `calidad_aire.calidad_aire_historico` | `merge` | Histórico mensual |
 | `calidad_aire.dim_calair` | `overwrite` | Dimensión puntual |
@@ -1340,6 +1405,7 @@ TRANSFORMATIONS = {
     "parse_timestamp": parse_timestamp,
     "deduplicate": deduplicate,
     "lookup_join": lookup_join,
+    "assign_district": assign_district,
 }
 ```
 

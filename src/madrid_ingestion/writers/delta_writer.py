@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 
 from madrid_ingestion.core.exceptions import WriteStrategyError
@@ -65,6 +68,75 @@ def merge_delta(
     )
 
 
+def _sql_literal(value: Any) -> str:
+    """Representa un valor de partición como literal SQL seguro."""
+    if value is None:
+        return "NULL"
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, int | Decimal):
+        return str(value)
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise WriteStrategyError(
+                "replace_partitions no admite valores de partición no finitos."
+            )
+        return repr(value)
+    if isinstance(value, datetime):
+        return f"TIMESTAMP '{value.isoformat(sep=' ')}'"
+    if isinstance(value, date):
+        return f"DATE '{value.isoformat()}'"
+    escaped = str(value).replace("'", "''")
+    return f"'{escaped}'"
+
+
+def _build_replace_where_predicate(
+    partition_by: Sequence[str], partition_rows: Sequence[Any]
+) -> str:
+    """Construye el predicado que limita el overwrite a las particiones recibidas."""
+    if not partition_rows:
+        raise WriteStrategyError(
+            "replace_partitions no recibió ninguna partición para escribir."
+        )
+
+    clauses = []
+    for row in partition_rows:
+        predicates = []
+        for column in partition_by:
+            identifier = f"`{column.replace('`', '``')}`"
+            value = row[column]
+            if value is None:
+                predicates.append(f"{identifier} IS NULL")
+            else:
+                predicates.append(f"{identifier} = {_sql_literal(value)}")
+        clauses.append(" AND ".join(predicates))
+    return " OR ".join(f"({clause})" for clause in clauses)
+
+
+def replace_delta_partitions(
+    df: Any,
+    target_path: str,
+    partition_by: Sequence[str],
+    overwrite_schema: bool = False,
+) -> None:
+    """Reemplaza atómicamente solo las particiones presentes en el DataFrame."""
+    if not partition_by:
+        raise WriteStrategyError(
+            "La estrategia replace_partitions requiere columnas de partición."
+        )
+    _validate_columns(df, partition_by, "reemplazo de particiones")
+    partition_rows = df.select(*partition_by).distinct().collect()
+    predicate = _build_replace_where_predicate(partition_by, partition_rows)
+    writer = (
+        df.write.format("delta")
+        .mode("overwrite")
+        .option("replaceWhere", predicate)
+    )
+    if overwrite_schema:
+        writer = writer.option("overwriteSchema", "true")
+    writer.partitionBy(*partition_by).save(target_path)
+
+
 def write_silver_delta(
     spark: Any,
     df: Any,
@@ -93,6 +165,13 @@ def write_silver_delta(
             merge_delta(spark, df, target_path, business_keys)
         else:
             write_initial_delta(df, target_path, "overwrite", partition_by)
+    elif strategy == "replace_partitions":
+        replace_delta_partitions(
+            df,
+            target_path,
+            partition_by,
+            overwrite_schema=overwrite_schema,
+        )
     else:
         raise WriteStrategyError(f"Estrategia de escritura desconocida: {strategy!r}.")
     if not exists:

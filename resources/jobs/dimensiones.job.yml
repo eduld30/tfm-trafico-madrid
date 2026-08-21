@@ -1,0 +1,265 @@
+resources:
+  jobs:
+    ingesta_dimensiones:
+      name: madrid-ingestion-dimensiones
+      description: "Carga manual inicial de las dimensiones Bronze y Silver"
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: brz_dim_distritos
+          environment_key: default
+          python_wheel_task:
+            package_name: madrid_ingestion
+            entry_point: madrid-ingestion
+            parameters:
+              - run
+              - --env
+              - ${var.environment}
+              - --layer
+              - bronze
+              - --source
+              - trafico
+              - --dataset
+              - dim_distritos
+              - --run-id
+              - "{{job.run_id}}"
+              - --config-root
+              - ${workspace.file_path}/conf
+
+        - task_key: slv_dim_distritos
+          depends_on:
+            - task_key: brz_dim_distritos
+          environment_key: default
+          python_wheel_task:
+            package_name: madrid_ingestion
+            entry_point: madrid-ingestion
+            parameters:
+              - run
+              - --env
+              - ${var.environment}
+              - --layer
+              - silver
+              - --source
+              - trafico
+              - --dataset
+              - dim_distritos
+              - --run-id
+              - "{{job.run_id}}"
+              - --config-root
+              - ${workspace.file_path}/conf
+
+        - task_key: brz_dim_trafico
+          environment_key: default
+          python_wheel_task:
+            package_name: madrid_ingestion
+            entry_point: madrid-ingestion
+            parameters:
+              - run
+              - --env
+              - ${var.environment}
+              - --layer
+              - bronze
+              - --source
+              - trafico
+              - --dataset
+              - dim_trafico
+              - --run-id
+              - "{{job.run_id}}"
+              - --config-root
+              - ${workspace.file_path}/conf
+
+        - task_key: slv_dim_trafico
+          depends_on:
+            - task_key: brz_dim_trafico
+          environment_key: default
+          python_wheel_task:
+            package_name: madrid_ingestion
+            entry_point: madrid-ingestion
+            parameters:
+              - run
+              - --env
+              - ${var.environment}
+              - --layer
+              - silver
+              - --source
+              - trafico
+              - --dataset
+              - dim_trafico
+              - --run-id
+              - "{{job.run_id}}"
+              - --config-root
+              - ${workspace.file_path}/conf
+
+        - task_key: brz_dim_meteo
+          environment_key: default
+          python_wheel_task:
+            package_name: madrid_ingestion
+            entry_point: madrid-ingestion
+            parameters:
+              - run
+              - --env
+              - ${var.environment}
+              - --layer
+              - bronze
+              - --source
+              - meteo
+              - --dataset
+              - dim_meteo
+              - --run-id
+              - "{{job.run_id}}"
+              - --config-root
+              - ${workspace.file_path}/conf
+
+        - task_key: slv_dim_meteo
+          depends_on:
+            - task_key: brz_dim_meteo
+          environment_key: default
+          python_wheel_task:
+            package_name: madrid_ingestion
+            entry_point: madrid-ingestion
+            parameters:
+              - run
+              - --env
+              - ${var.environment}
+              - --layer
+              - silver
+              - --source
+              - meteo
+              - --dataset
+              - dim_meteo
+              - --run-id
+              - "{{job.run_id}}"
+              - --config-root
+              - ${workspace.file_path}/conf
+
+        - task_key: brz_dim_meteo_magnitudes
+          environment_key: default
+          python_wheel_task:
+            package_name: madrid_ingestion
+            entry_point: madrid-ingestion
+            parameters:
+              - run
+              - --env
+              - ${var.environment}
+              - --layer
+              - bronze
+              - --source
+              - meteo
+              - --dataset
+              - dim_meteo_magnitudes
+              - --run-id
+              - "{{job.run_id}}"
+              - --config-root
+              - ${workspace.file_path}/conf
+
+        - task_key: slv_dim_meteo_magnitudes
+          depends_on:
+            - task_key: brz_dim_meteo_magnitudes
+          environment_key: default
+          python_wheel_task:
+            package_name: madrid_ingestion
+            entry_point: madrid-ingestion
+            parameters:
+              - run
+              - --env
+              - ${var.environment}
+              - --layer
+              - silver
+              - --source
+              - meteo
+              - --dataset
+              - dim_meteo_magnitudes
+              - --run-id
+              - "{{job.run_id}}"
+              - --config-root
+              - ${workspace.file_path}/conf
+
+        - task_key: brz_dim_calair
+          environment_key: default
+          python_wheel_task:
+            package_name: madrid_ingestion
+            entry_point: madrid-ingestion
+            parameters:
+              - run
+              - --env
+              - ${var.environment}
+              - --layer
+              - bronze
+              - --source
+              - calair
+              - --dataset
+              - dim_calair
+              - --run-id
+              - "{{job.run_id}}"
+              - --config-root
+              - ${workspace.file_path}/conf
+
+        - task_key: slv_dim_calair
+          depends_on:
+            - task_key: brz_dim_calair
+          environment_key: default
+          python_wheel_task:
+            package_name: madrid_ingestion
+            entry_point: madrid-ingestion
+            parameters:
+              - run
+              - --env
+              - ${var.environment}
+              - --layer
+              - silver
+              - --source
+              - calair
+              - --dataset
+              - dim_calair
+              - --run-id
+              - "{{job.run_id}}"
+              - --config-root
+              - ${workspace.file_path}/conf
+
+        - task_key: brz_dim_calair_magnitudes
+          environment_key: default
+          python_wheel_task:
+            package_name: madrid_ingestion
+            entry_point: madrid-ingestion
+            parameters:
+              - run
+              - --env
+              - ${var.environment}
+              - --layer
+              - bronze
+              - --source
+              - calair
+              - --dataset
+              - dim_calair_magnitudes
+              - --run-id
+              - "{{job.run_id}}"
+              - --config-root
+              - ${workspace.file_path}/conf
+
+        - task_key: slv_dim_calair_magnitudes
+          depends_on:
+            - task_key: brz_dim_calair_magnitudes
+          environment_key: default
+          python_wheel_task:
+            package_name: madrid_ingestion
+            entry_point: madrid-ingestion
+            parameters:
+              - run
+              - --env
+              - ${var.environment}
+              - --layer
+              - silver
+              - --source
+              - calair
+              - --dataset
+              - dim_calair_magnitudes
+              - --run-id
+              - "{{job.run_id}}"
+              - --config-root
+              - ${workspace.file_path}/conf
+
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "4"
+            dependencies:
+              - ../../dist/*.whl

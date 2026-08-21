@@ -1,12 +1,12 @@
 {
-	"name": "tr_meteo_horario",
+	"name": "tr_trafico_historico",
 	"properties": {
 		"annotations": [],
 		"runtimeState": "Stopped",
 		"pipelines": [
 			{
 				"pipelineReference": {
-					"referenceName": "pl_ingest_meteo_horario",
+					"referenceName": "pl_ingest_trafico_historico",
 					"type": "PipelineReference"
 				}
 			}
@@ -16,14 +16,14 @@
 			"recurrence": {
 				"frequency": "Month",
 				"interval": 1,
-				"startTime": "2026-07-30T19:24:00",
+				"startTime": "2026-07-30T19:20:00",
 				"timeZone": "Romance Standard Time",
 				"schedule": {
 					"minutes": [
-						30
+						0
 					],
 					"hours": [
-						8
+						7
 					],
 					"monthDays": [
 						1

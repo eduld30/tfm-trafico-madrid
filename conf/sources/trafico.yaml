@@ -145,9 +145,19 @@ datasets:
           conditions:
             id: id
           select:
-            distrito: distrito
+            distrito_cod: distrito
             latitud: latitud
             longitud: longitud
+        - type: lookup_join
+          lookup_table:
+            layer: silver
+            source: trafico
+            dataset: dim_distritos
+          join_type: left
+          conditions:
+            distrito_cod: cod_dis
+          select:
+            distrito_nombre: nombre
         - type: trim
           columns:
             - tipo_elem
@@ -175,7 +185,12 @@ datasets:
         row_tag: "pms"
         record_path: "pm"
         parent_columns: "fecha_hora"
-      autoloader_options: *autoloader_options
+      autoloader_options:
+        <<: *autoloader_options
+        extra_options:
+          # Auto Loader infiere XML como STRING por defecto; pm debe ser un
+          # ARRAY<STRUCT> para poder expandir los puntos de medida.
+          cloudFiles.inferColumnTypes: "true"
       transformations:
         - type: normalize_column_names
     silver:
@@ -229,9 +244,19 @@ datasets:
           conditions:
             idelem: id
           select:
-            distrito: distrito
+            distrito_cod: distrito
             latitud: latitud
             longitud: longitud
+        - type: lookup_join
+          lookup_table:
+            layer: silver
+            source: trafico
+            dataset: dim_distritos
+          join_type: left
+          conditions:
+            distrito_cod: cod_dis
+          select:
+            distrito_nombre: nombre
         - type: trim
           columns:
             - descripcion

@@ -60,9 +60,20 @@ class FakeWriter:
 
 
 class FakeDataFrame:
-    def __init__(self, columns):
+    def __init__(self, columns, partition_rows=None):
         self.columns = columns
         self.write = FakeWriter()
+        self.partition_rows = partition_rows or []
+
+    def select(self, *columns):
+        self.selected_columns = columns
+        return self
+
+    def distinct(self):
+        return self
+
+    def collect(self):
+        return self.partition_rows
 
 
 def test_overwrite_selects_batch_writer_and_registers_table():
@@ -125,6 +136,31 @@ def test_merge_uses_delta_api_for_existing_table(monkeypatch):
     assert spark.statements == [
         "DESCRIBE DETAIL `dev_silver`.`trafico`.`dataset`"
     ]
+
+
+def test_replace_partitions_limits_overwrite_to_received_partitions():
+    spark = FakeSpark(exists=True)
+    df = FakeDataFrame(
+        ["id", "anio"],
+        partition_rows=[{"anio": 2025}, {"anio": 2026}],
+    )
+
+    delta_writer.write_silver_delta(
+        spark,
+        df,
+        "dev_silver.trafico.dataset",
+        "abfss://silver@account/path/",
+        "replace_partitions",
+        partition_by=["anio"],
+    )
+
+    assert ("mode", "overwrite") in df.write.calls
+    assert (
+        "option",
+        "replaceWhere",
+        "(`anio` = 2025) OR (`anio` = 2026)",
+    ) in df.write.calls
+    assert ("partitionBy", ("anio",)) in df.write.calls
 
 
 def test_unknown_strategy_fails():

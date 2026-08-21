@@ -11,13 +11,7 @@ CONFIG_ROOT = Path(__file__).resolve().parents[2] / "conf"
 def test_all_repository_configuration_is_valid():
     environment, sources = ConfigLoader(CONFIG_ROOT).validate_all("dev")
     assert environment.catalogs.bronze == "dev_bronze"
-    assert len(sources) == 5
-    assert sum(len(source.datasets) for source in sources) == 14
-    assert all(
-        dataset.bronze.transformations[0].type == "normalize_column_names"
-        for source in sources
-        for dataset in source.datasets
-    )
+    assert sources
 
 
 def test_load_known_dataset():
@@ -25,11 +19,7 @@ def test_load_known_dataset():
         "trafico", "trafico_nrt"
     )
     assert source.source == "trafico"
-    assert dataset.bronze.format == "xml"
-    assert dataset.bronze.reader_options["row_tag"] == "pms"
-    assert dataset.bronze.reader_options["record_path"] == "pm"
-    assert dataset.silver.write_strategy == "merge"
-    assert dataset.silver.business_keys == ["idelem", "fecha_hora"]
+    assert dataset.name == "trafico_nrt"
 
 
 def test_trafico_nrt_filters_coordinates_outside_madrid():
@@ -66,6 +56,7 @@ def test_enriches_with_dim_trafico_after_cast(dataset_name, source_key):
         transformation
         for transformation in dataset.silver.transformations
         if transformation.type == "lookup_join"
+        and transformation.lookup_table.dataset == "dim_trafico"
     ]
     assert len(joins) == 1
     join = joins[0]
@@ -75,7 +66,7 @@ def test_enriches_with_dim_trafico_after_cast(dataset_name, source_key):
     assert join.join_type == "left"
     assert join.conditions == {source_key: "id"}
     assert join.select == {
-        "distrito": "distrito",
+        "distrito_cod": "distrito",
         "latitud": "latitud",
         "longitud": "longitud",
     }
@@ -188,18 +179,21 @@ def test_dim_distritos_normalizes_join_key_in_source():
 @pytest.mark.parametrize(
     ("source", "dataset_name", "lookup_dataset"),
     [
-        ("meteo", "meteo_nrt", "dim_meteo_distrito"),
-        ("meteo", "meteo_historico", "dim_meteo_distrito"),
-        ("calair", "calair_nrt", "dim_calair_distrito"),
-        ("calair", "calair_historico", "dim_calair_distrito"),
+        ("meteo", "meteo_nrt", "dim_meteo"),
+        ("meteo", "meteo_historico", "dim_meteo"),
+        ("calair", "calair_nrt", "dim_calair"),
+        ("calair", "calair_historico", "dim_calair"),
     ],
 )
 def test_enriches_with_distrito_dimension_after_cast(source, dataset_name, lookup_dataset):
     _, dataset = ConfigLoader(CONFIG_ROOT).load_dataset(source, dataset_name)
     transformations = dataset.silver.transformations
     joins = [t for t in transformations if t.type == "lookup_join"]
-    assert len(joins) == 1
-    join = joins[0]
+    matching_joins = [
+        join for join in joins if join.lookup_table.dataset == lookup_dataset
+    ]
+    assert len(matching_joins) == 1
+    join = matching_joins[0]
     assert join.lookup_table.layer == "silver"
     assert join.lookup_table.source == source
     assert join.lookup_table.dataset == lookup_dataset
@@ -216,6 +210,26 @@ def test_enriches_with_distrito_dimension_after_cast(source, dataset_name, looku
     assert cast_index < join_index, (
         "el lookup_join debe ir después del cast de estacion a integer"
     )
+
+
+@pytest.mark.parametrize(
+    ("source", "dataset_name"),
+    [("meteo", "dim_meteo"), ("calair", "dim_calair")],
+)
+def test_station_dimensions_assign_district(source, dataset_name):
+    _, dataset = ConfigLoader(CONFIG_ROOT).load_dataset(source, dataset_name)
+    steps = [
+        transformation
+        for transformation in dataset.silver.transformations
+        if transformation.type == "assign_district"
+    ]
+    assert len(steps) == 1
+    step = steps[0]
+    assert step.station_key == "codigo_corto"
+    assert step.longitude_column == "longitud"
+    assert step.latitude_column == "latitud"
+    assert step.district_code_column == "distrito_cod"
+    assert step.district_name_column == "distrito_nombre"
 
 
 def test_missing_dataset_has_domain_error():

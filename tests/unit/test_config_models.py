@@ -33,17 +33,14 @@ def test_merge_requires_business_keys():
         silver(write_strategy="merge")
 
 
-def test_append_requires_incremental_strategy():
-    with pytest.raises(ValidationError, match="incremental"):
-        silver(write_strategy="append")
+def test_append_uses_the_common_incremental_processing():
+    config = silver(write_strategy="append")
+    assert config.write_strategy == "append"
 
 
-def test_append_accepts_ingestion_run_id():
-    config = silver(
-        write_strategy="append",
-        incremental={"type": "ingestion_run_id"},
-    )
-    assert config.incremental.type == "ingestion_run_id"
+def test_replace_partitions_requires_partition_columns():
+    with pytest.raises(ValidationError, match="partition_by"):
+        silver(write_strategy="replace_partitions")
 
 
 def test_unknown_transformation_fails_early():
@@ -84,6 +81,23 @@ def test_hourly_wide_to_long_validates_hour_range():
             validity_column="validez",
             timestamp_column="fecha_hora",
             hours=25,
+        )
+
+
+def test_assign_district_requires_its_column_contract():
+    with pytest.raises(ValidationError, match="station_key"):
+        TransformationConfig(type="assign_district")
+
+
+def test_assign_district_rejects_equal_output_columns():
+    with pytest.raises(ValidationError, match="columnas de código y nombre distintas"):
+        TransformationConfig(
+            type="assign_district",
+            station_key="codigo_corto",
+            longitude_column="longitud",
+            latitude_column="latitud",
+            district_code_column="distrito",
+            district_name_column="distrito",
         )
 
 

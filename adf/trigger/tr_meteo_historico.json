@@ -1,12 +1,12 @@
 {
-	"name": "tr_meteo_diario",
+	"name": "tr_meteo_historico",
 	"properties": {
 		"annotations": [],
 		"runtimeState": "Stopped",
 		"pipelines": [
 			{
 				"pipelineReference": {
-					"referenceName": "pl_ingest_meteo_diario",
+					"referenceName": "pl_ingest_meteo_historico",
 					"type": "PipelineReference"
 				}
 			}
@@ -20,7 +20,7 @@
 				"timeZone": "Romance Standard Time",
 				"schedule": {
 					"minutes": [
-						0
+						30
 					],
 					"hours": [
 						8

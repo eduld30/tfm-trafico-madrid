@@ -39,9 +39,11 @@ def test_registry_contains_the_declared_initial_transformations():
         "add_literal",
         "parse_timestamp",
         "parse_date",
+        "extract_year",
         "hourly_wide_to_long",
         "deduplicate",
         "lookup_join",
+        "assign_district",
     }
 
 

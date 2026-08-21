@@ -1,0 +1,55 @@
+resources:
+  jobs:
+    ingesta_calair_historico:
+      name: madrid-ingestion-calair-historico
+      description: "Ingesta manual Bronze y Silver del histórico de calidad del aire"
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: brz_calair_historico
+          environment_key: default
+          python_wheel_task:
+            package_name: madrid_ingestion
+            entry_point: madrid-ingestion
+            parameters:
+              - run
+              - --env
+              - ${var.environment}
+              - --layer
+              - bronze
+              - --source
+              - calair
+              - --dataset
+              - calair_historico
+              - --run-id
+              - "{{job.run_id}}"
+              - --config-root
+              - ${workspace.file_path}/conf
+
+        - task_key: slv_calair_historico
+          depends_on:
+            - task_key: brz_calair_historico
+          environment_key: default
+          python_wheel_task:
+            package_name: madrid_ingestion
+            entry_point: madrid-ingestion
+            parameters:
+              - run
+              - --env
+              - ${var.environment}
+              - --layer
+              - silver
+              - --source
+              - calair
+              - --dataset
+              - calair_historico
+              - --run-id
+              - "{{job.run_id}}"
+              - --config-root
+              - ${workspace.file_path}/conf
+
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "4"
+            dependencies:
+              - ../../dist/*.whl

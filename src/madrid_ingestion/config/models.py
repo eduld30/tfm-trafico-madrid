@@ -26,9 +26,11 @@ SUPPORTED_TRANSFORMATIONS = frozenset(
         "add_literal",
         "parse_timestamp",
         "parse_date",
+        "extract_year",
         "hourly_wide_to_long",
         "deduplicate",
         "lookup_join",
+        "assign_district",
     }
 )
 
@@ -145,19 +147,6 @@ class BronzeConfig(StrictModel):
         return value
 
 
-class IncrementalConfig(StrictModel):
-    type: Literal["ingestion_run_id", "predicate"]
-    condition: str | None = None
-
-    @model_validator(mode="after")
-    def validate_condition(self) -> IncrementalConfig:
-        if self.type == "predicate" and not self.condition:
-            raise ValueError("incremental.condition es obligatorio para type='predicate'.")
-        if self.type == "ingestion_run_id" and self.condition is not None:
-            raise ValueError("ingestion_run_id no admite condition.")
-        return self
-
-
 class LookupTableConfig(StrictModel):
     layer: Literal["bronze", "silver"]
     source: str
@@ -200,6 +189,11 @@ class TransformationConfig(StrictModel):
     timestamp_column: str | None = None
     hours: int | None = None
     hour_offset: int = -1
+    station_key: str | None = None
+    longitude_column: str | None = None
+    latitude_column: str | None = None
+    district_code_column: str | None = None
+    district_name_column: str | None = None
 
     @model_validator(mode="after")
     def validate_parameters(self) -> TransformationConfig:
@@ -221,6 +215,7 @@ class TransformationConfig(StrictModel):
             "add_literal": ("column",),
             "parse_timestamp": ("target_column", "format"),
             "parse_date": ("source_column", "target_column", "format"),
+            "extract_year": ("source_column", "target_column"),
             "hourly_wide_to_long": (
                 "year_column",
                 "month_column",
@@ -233,6 +228,13 @@ class TransformationConfig(StrictModel):
             ),
             "deduplicate": ("keys", "order_by"),
             "lookup_join": ("lookup_table", "conditions", "select"),
+            "assign_district": (
+                "station_key",
+                "longitude_column",
+                "latitude_column",
+                "district_code_column",
+                "district_name_column",
+            ),
         }
         missing = [
             name for name in required.get(self.type, ()) if getattr(self, name) is None
@@ -281,6 +283,13 @@ class TransformationConfig(StrictModel):
             not self.conditions or not self.select
         ):
             raise ValueError("lookup_join requiere conditions y select no vacíos.")
+        if (
+            self.type == "assign_district"
+            and self.district_code_column == self.district_name_column
+        ):
+            raise ValueError(
+                "assign_district requiere columnas de código y nombre distintas."
+            )
         return self
 
 
@@ -292,11 +301,10 @@ class SilverSourceConfig(StrictModel):
 class SilverConfig(StrictModel):
     enabled: bool = True
     target_path: str
-    write_strategy: Literal["overwrite", "merge", "append"]
+    write_strategy: Literal["overwrite", "merge", "append", "replace_partitions"]
     business_keys: list[str] = Field(default_factory=list)
     partition_by: list[str] = Field(default_factory=list)
     transformations: list[TransformationConfig] = Field(default_factory=list)
-    incremental: IncrementalConfig | None = None
     overwrite_schema: bool = False
     source_table: SilverSourceConfig | None = None
 
@@ -309,12 +317,14 @@ class SilverConfig(StrictModel):
     def validate_strategy(self) -> SilverConfig:
         if self.write_strategy == "merge" and not self.business_keys:
             raise ValueError("write_strategy='merge' requiere business_keys.")
-        if self.write_strategy == "append" and self.incremental is None:
-            raise ValueError("write_strategy='append' requiere incremental.")
-        if self.write_strategy != "append" and self.incremental is not None:
-            raise ValueError("incremental solo se admite con write_strategy='append'.")
+        if self.write_strategy == "replace_partitions" and not self.partition_by:
+            raise ValueError(
+                "write_strategy='replace_partitions' requiere partition_by."
+            )
         if len(self.business_keys) != len(set(self.business_keys)):
             raise ValueError("business_keys contiene valores duplicados.")
+        if len(self.partition_by) != len(set(self.partition_by)):
+            raise ValueError("partition_by contiene valores duplicados.")
         return self
 
 
