@@ -8,6 +8,7 @@
 				"dependsOn": [],
 				"policy": {
 					"timeout": "0.00:10:00",
+					"retry": 3,
 					"retryIntervalInSeconds": 30
 				},
 				"userProperties": [],
@@ -18,6 +19,9 @@
 							"type": "HttpReadSettings",
 							"relativeUrl": "/dataset/300392-0-meteorologia-tiempo-real/resource/300392-2-meteorologia-tiempo-real/download/300392-2-meteorologia-tiempo-real.csv",
 							"requestMethod": "GET"
+						},
+						"formatSettings": {
+							"type": "BinaryReadSettings"
 						}
 					},
 					"sink": {

@@ -8,6 +8,7 @@
 				"dependsOn": [],
 				"policy": {
 					"timeout": "0.00:10:00",
+					"retry": 3,
 					"retryIntervalInSeconds": 30
 				},
 				"userProperties": [],
@@ -18,6 +19,9 @@
 							"type": "HttpReadSettings",
 							"relativeUrl": "/dataset/212531-0-calidad-aire-tiempo-real/resource/212531-2-calidad-aire-tiempo-real/download/212531-2-calidad-aire-tiempo-real.csv",
 							"requestMethod": "GET"
+						},
+						"formatSettings": {
+							"type": "BinaryReadSettings"
 						}
 					},
 					"sink": {

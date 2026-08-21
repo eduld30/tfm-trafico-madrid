@@ -3,11 +3,12 @@
 	"properties": {
 		"activities": [
 			{
-				"name": "copy_accidentes",
+				"name": "copy_accidentes_historico",
 				"type": "Copy",
 				"dependsOn": [],
 				"policy": {
 					"timeout": "0.00:10:00",
+					"retry": 3,
 					"retryIntervalInSeconds": 30
 				},
 				"userProperties": [],
@@ -44,10 +45,13 @@
 						"type": "DatasetReference",
 						"parameters": {
 							"p_directory": {
-								"value": "@concat('accidentes/',formatDateTime(utcNow(),'yyyy'),'/',formatDateTime(utcNow(),'MM'))",
+								"value": "@concat('accidentes/accidentes_historico/',formatDateTime(utcNow(),'yyyy'),'/',formatDateTime(utcNow(),'MM'),'/',formatDateTime(utcNow(),'dd'))",
 								"type": "Expression"
 							},
-							"p_filename": "accidentes_@{formatDateTime(utcNow(),'yyyyMM')}.csv"
+							"p_filename": {
+								"value": "accidentes_historico_@{formatDateTime(utcNow(),'yyyyMMdd')}.csv",
+								"type": "Expression"
+							}
 						}
 					}
 				]

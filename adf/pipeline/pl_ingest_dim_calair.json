@@ -8,6 +8,7 @@
 				"dependsOn": [],
 				"policy": {
 					"timeout": "0.00:10:00",
+					"retry": 3,
 					"retryIntervalInSeconds": 30
 				},
 				"userProperties": [],
@@ -18,6 +19,9 @@
 							"type": "HttpReadSettings",
 							"relativeUrl": "/dataset/212629-0-estaciones-control-aire/resource/212629-0-estaciones-control-aire-csv/download/212629-0-estaciones-control-aire-csv.csv",
 							"requestMethod": "GET"
+						},
+						"formatSettings": {
+							"type": "BinaryReadSettings"
 						}
 					},
 					"sink": {
@@ -41,7 +45,7 @@
 						"type": "DatasetReference",
 						"parameters": {
 							"p_directory": {
-								"value": "calair/dim_calair",
+								"value": "@concat('calair/dim_calair/',formatDateTime(utcNow(),'yyyy'),'/',formatDateTime(utcNow(),'MM'),'/',formatDateTime(utcNow(),'dd'))",
 								"type": "Expression"
 							},
 							"p_filename": "dim_calair_@{formatDateTime(utcNow(),'yyyyMMdd')}.csv"

@@ -3,11 +3,12 @@
 	"properties": {
 		"activities": [
 			{
-				"name": "copy_eventos",
+				"name": "copy_eventos_culturales",
 				"type": "Copy",
 				"dependsOn": [],
 				"policy": {
 					"timeout": "0.00:10:00",
+					"retry": 3,
 					"retryIntervalInSeconds": 30
 				},
 				"userProperties": [],
@@ -18,6 +19,9 @@
 							"type": "HttpReadSettings",
 							"relativeUrl": "/dataset/206974-0-agenda-eventos-culturales-100/resource/206974-4-agenda-eventos-culturales-100-csv/download/206974-4-agenda-eventos-culturales-100-csv.csv",
 							"requestMethod": "GET"
+						},
+						"formatSettings": {
+							"type": "BinaryReadSettings"
 						}
 					},
 					"sink": {
@@ -41,10 +45,13 @@
 						"type": "DatasetReference",
 						"parameters": {
 							"p_directory": {
-								"value": "@concat('eventos_culturales/',formatDateTime(utcNow(),'yyyy'),'/',formatDateTime(utcNow(),'MM'),'/',formatDateTime(utcNow(),'dd'),'/',formatDateTime(utcNow(),'HH'))",
+								"value": "@concat('eventos/eventos_culturales/',formatDateTime(utcNow(),'yyyy'),'/',formatDateTime(utcNow(),'MM'),'/',formatDateTime(utcNow(),'dd'))",
 								"type": "Expression"
 							},
-							"p_filename": "eventos_@{formatDateTime(utcNow(),'yyyyMMdd_HHmm')}.csv"
+							"p_filename": {
+								"value": "eventos_culturales_@{formatDateTime(utcNow(),'yyyyMMdd')}.csv",
+								"type": "Expression"
+							}
 						}
 					}
 				]
