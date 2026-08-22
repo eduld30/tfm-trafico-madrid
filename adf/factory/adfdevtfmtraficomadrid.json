@@ -1,6 +1,12 @@
 {
 	"name": "adfdevtfmtraficomadrid",
 	"properties": {
+		"globalParameters": {
+			"adb_job_trafico_nrt_id": {
+				"type": "string",
+				"value": "65421632804981"
+			}
+		},
 		"trustModeClaimForMi": {
 			"value": "Disabled",
 			"editable": true
