@@ -6,9 +6,37 @@
 				"type": "string",
 				"value": "65421632804981"
 			},
-			"adb_job_accidentes_historico": {
+			"adb_job_accidentes_historico_id": {
 				"type": "string",
 				"value": "88790392815235"
+			},
+			"adb_job_calair_historico_id": {
+				"type": "string",
+				"value": "903256367434375"
+			},
+			"adb_job_calair_nrt_id": {
+				"type": "string",
+				"value": "833010027148360"
+			},
+			"adb_job_dimensiones_id": {
+				"type": "string",
+				"value": "158630013756988"
+			},
+			"adb_job_eventos_id": {
+				"type": "string",
+				"value": "1036751480788212"
+			},
+			"adb_job_meteo_historico_id": {
+				"type": "string",
+				"value": "98570897296031"
+			},
+			"adb_job_meteo_nrt_id": {
+				"type": "string",
+				"value": "817942777878174"
+			},
+			"adb_job_trafico_historico_id": {
+				"type": "string",
+				"value": "318829432651517"
 			}
 		},
 		"trustModeClaimForMi": {
