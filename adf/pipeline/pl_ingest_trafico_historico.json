@@ -148,6 +148,36 @@
 						"enablePartitionDiscovery": false
 					}
 				}
+			},
+			{
+				"name": "run_adb_trafico_historico",
+				"type": "DatabricksJob",
+				"dependsOn": [
+					{
+						"activity": "unzip_trafico_historico_csv",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"jobId": {
+						"value": "@pipeline().globalParameters.adb_job_trafico_historico_id",
+						"type": "Expression"
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "ls_adb_trial",
+					"type": "LinkedServiceReference"
+				}
 			}
 		],
 		"annotations": [],
