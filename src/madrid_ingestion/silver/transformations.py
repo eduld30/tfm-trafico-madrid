@@ -61,7 +61,7 @@ def cast_columns(df: Any, config: TransformationConfig, context: RunContext) -> 
 
     result = df
     for column, data_type in config.columns.items():
-        result = result.withColumn(column, F.col(column).cast(data_type))
+        result = result.withColumn(column, F.col(column).try_cast(data_type))
     return result
 
 
