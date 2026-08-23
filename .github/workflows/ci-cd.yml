@@ -157,6 +157,16 @@ jobs:
             <(jq -r '.parameters | keys[]' "$ADF_OUTPUT/ARMTemplateParametersForFactory.json") \
             <(jq -r '.parameters | keys[]' "adf/params/$DEPLOY_TARGET.json")
 
+      - name: Check environment parameters are complete
+        shell: bash
+        run: |
+          if jq -e \
+            '[.parameters[] | .value] | any(. == "<<pendiente>>")' \
+            "adf/params/$DEPLOY_TARGET.json" > /dev/null; then
+            echo "ADF parameters for $DEPLOY_TARGET still contain pending values." >&2
+            exit 1
+          fi
+
       - name: Upload ARM template
         uses: actions/upload-artifact@v4
         with:
@@ -201,6 +211,7 @@ jobs:
       - python_quality
       - adf_validate
       - databricks_validate
+      - deploy_databricks
     runs-on: ubuntu-latest
     concurrency:
       group: adf-${{ needs.resolve_environment.outputs.target }}-deploy

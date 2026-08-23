@@ -5,6 +5,33 @@
     "factoryName": {
       "value": "adfdevtfmtraficomadrid"
     },
+    "default_properties_adb_job_trafico_nrt_id_value": {
+      "value": "65421632804981"
+    },
+    "default_properties_adb_job_accidentes_historico_id_value": {
+      "value": "88790392815235"
+    },
+    "default_properties_adb_job_calair_historico_id_value": {
+      "value": "903256367434375"
+    },
+    "default_properties_adb_job_calair_nrt_id_value": {
+      "value": "833010027148360"
+    },
+    "default_properties_adb_job_dimensiones_id_value": {
+      "value": "158630013756988"
+    },
+    "default_properties_adb_job_eventos_id_value": {
+      "value": "1036751480788212"
+    },
+    "default_properties_adb_job_meteo_historico_id_value": {
+      "value": "98570897296031"
+    },
+    "default_properties_adb_job_meteo_nrt_id_value": {
+      "value": "817942777878174"
+    },
+    "default_properties_adb_job_trafico_historico_id_value": {
+      "value": "318829432651517"
+    },
     "ls_adls_properties_typeProperties_storageAccountUrl": {
       "value": "https://stadevtfmtraficomadrid.dfs.core.windows.net/"
     },

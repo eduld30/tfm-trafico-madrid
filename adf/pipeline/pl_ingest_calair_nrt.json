@@ -52,6 +52,36 @@
 						}
 					}
 				]
+			},
+			{
+				"name": "run_adb_calair_nrt",
+				"type": "DatabricksJob",
+				"dependsOn": [
+					{
+						"activity": "copy_calair_nrt",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"jobId": {
+						"value": "@pipeline().globalParameters.adb_job_calair_nrt_id",
+						"type": "Expression"
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "ls_adb_trial",
+					"type": "LinkedServiceReference"
+				}
 			}
 		],
 		"annotations": [],
