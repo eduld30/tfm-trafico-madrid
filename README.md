@@ -11,9 +11,10 @@ ejecutable ni secretos.
 ## Arquitectura implementada
 
 ```text
-landing (CSV/XML)
+fuentes HTTP / ficheros estáticos
+  -> Azure Data Factory: descarga y organización temporal en landing
   -> Bronze: Auto Loader + metadatos técnicos + Delta externo
-  -> Silver: lectura incremental + transformaciones + overwrite/merge
+  -> Silver: lectura incremental + transformaciones + escritura idempotente
   -> Unity Catalog: <entorno>_<capa>.<fuente>.<dataset>
 ```
 
@@ -113,7 +114,8 @@ deduplicate, lookup_join, assign_district
 
 Las transformaciones se ejecutan en el orden declarado. `lookup_join` resuelve
 tablas Bronze o Silver mediante catálogo, fuente y dataset; el mapa `select`
-define `columna_destino: columna_lookup`.
+define `columna_destino: columna_lookup`. Los casts usan `try_cast`, por lo que
+un valor incompatible se convierte en nulo sin abortar el lote completo.
 
 Al adoptar `replace_partitions`, una tabla ya creada sin particionar no puede
 convertirse en particionada mediante una escritura incremental. La primera
@@ -171,7 +173,8 @@ puede combinar con `--source` ni `--dataset`.
 
 ## Databricks Asset Bundle
 
-El repositorio incluye un bundle para desplegar nueve jobs de ejecución manual:
+El repositorio incluye un bundle para desplegar nueve jobs sin calendario
+propio, ejecutables manualmente o invocados desde Azure Data Factory:
 
 ```text
 ingesta_dimensiones
@@ -186,10 +189,10 @@ ingesta_calair_historico
 ```
 
 Cada dataset se ejecuta mediante dos tareas `python_wheel_task` con dependencia
-explícita `Bronze -> Silver`. Los jobs no tienen calendario, `run_as` ni clúster
-asignado: utilizan serverless compute con el entorno `default`. En el job de
-dimensiones, las seis ramas se ejecutan en paralelo y cada tarea Silver depende
-únicamente de la carga Bronze de su propio dataset.
+explícita `Bronze -> Silver`. Los jobs no declaran `run_as` ni clúster: utilizan
+serverless compute con el entorno `default`. En el job de dimensiones, las seis
+ramas se ejecutan en paralelo y cada tarea Silver depende únicamente de la
+carga Bronze de su propio dataset.
 
 El bundle construye el wheel del paquete, sincroniza `conf/` y despliega los
 targets lógicos `dev` y `pro`. Para preparar el entorno local y desplegar en
@@ -204,15 +207,47 @@ databricks bundle deploy -t dev
 
 Si se utiliza un perfil distinto del predeterminado, añadir
 `--profile <perfil>` a los comandos del bundle. Tras el despliegue, los jobs se
-pueden lanzar desde `Workflows > Jobs & Pipelines` en la UI de Databricks.
-Ejecutar primero `ingesta_dimensiones`; los restantes jobs consultan esas
-dimensiones desde sus transformaciones Silver.
+pueden lanzar desde `Workflows > Jobs & Pipelines` o desde los pipelines ADF.
+Las dimensiones deben cargarse primero, ya que los jobs restantes las consultan
+desde sus transformaciones Silver.
 
 La versión del artefacto se hace dinámica en cada despliegue para que serverless
 no reutilice un wheel anterior con el mismo número de versión del proyecto.
-La invocación de los jobs desde ADF y sus calendarios se mantienen fuera de
-esta iteración. El despliegue de los recursos de ADF y del bundle sí está
-automatizado mediante GitHub Actions.
+Los calendarios se mantienen en ADF, no en los recursos del bundle. El
+despliegue de ambos componentes está automatizado mediante GitHub Actions.
+
+## Orquestación con Azure Data Factory
+
+La carpeta `adf/` contiene trece pipelines: cuatro cargas individuales de
+dimensiones, un pipeline agrupador y ocho cargas de hechos. Estas últimas
+descargan el fichero público en la raíz estable del dataset bajo `landing` y,
+cuando la copia finaliza correctamente, invocan el job correspondiente de
+Databricks. El histórico de tráfico añade un paso de descompresión desde
+`_staging`.
+
+Las recurrencias configuradas usan la zona horaria `Romance Standard Time`:
+
+| Carga | Recurrencia |
+|---|---|
+| Tráfico NRT | Cada 10 minutos |
+| Meteorología NRT | Cada 10 minutos |
+| Calidad del aire NRT | Cada 20 minutos |
+| Eventos culturales | Diaria a las 07:00 |
+| Tráfico histórico | Día 1 de cada mes a las 07:00 |
+| Accidentes | Día 1 de cada mes a las 07:30 |
+| Meteorología histórica | Día 1 de cada mes a las 08:30 |
+| Calidad del aire histórica | Día 1 de cada mes a las 09:30 |
+| Dimensiones | Ejecución manual, sin trigger |
+
+Los ocho triggers están versionados con `runtimeState: Stopped`; deben activarse
+explícitamente en la factoría cuando proceda. `pl_ingest_dimensiones` descarga
+en paralelo las cuatro dimensiones obtenidas de fuentes externas y después
+lanza el job agrupado de seis dimensiones Bronze/Silver.
+
+Los identificadores de los nueve jobs son parámetros globales de ADF y se
+sobrescriben mediante `adf/params/<entorno>.json`. El linked service de
+Databricks utiliza la identidad administrada de la factoría, por lo que esta
+debe tener permisos para ejecutar los jobs del workspace.
 
 ## CI/CD
 
@@ -225,12 +260,12 @@ los dos entornos:
 - Un push o merge en `main` despliega ADF y Databricks en `pro`.
 - `workflow_dispatch` usa el entorno asociado a la rama desde la que se lance.
 
-En todos los casos también se ejecutan lint, tests y build del paquete. Los
-despliegues de ADF y Databricks comienzan en paralelo únicamente cuando todas
-las validaciones han finalizado correctamente.
+En todos los casos también se ejecutan lint, tests y build del paquete. Tras las
+validaciones, se despliega primero el Asset Bundle; ADF se despliega únicamente
+cuando los jobs de Databricks ya están disponibles.
 
-La autenticación usa GitHub OIDC y una identidad administrada de Azure, sin
-client secret ni token personal de Databricks. El workflow espera estas
+La autenticación usa GitHub OIDC y una identidad federada de Azure, sin client
+secret ni token personal de Databricks. El workflow espera estas
 variables de repositorio en GitHub:
 
 ```text
@@ -248,6 +283,11 @@ PRO_DATABRICKS_HOST
 Si ambos entornos usan el mismo workspace, `DEV_DATABRICKS_HOST` y
 `PRO_DATABRICKS_HOST` tendrán el mismo valor. La separación de datos sigue
 estando garantizada por los catálogos y rutas declarados en cada entorno.
+
+Los parámetros ADF de `dev` incluyen los nueve identificadores de jobs. En
+`adf/params/pro.json` esos valores siguen marcados como `<<pendiente>>`; la
+validación de CI detiene deliberadamente la promoción a `pro` hasta sustituirlos
+por los identificadores creados para ese entorno.
 
 La identidad debe tener tres credenciales federadas para el repositorio
 `eduld30/tfm-trafico-madrid`: una de tipo **Pull request**, otra de tipo
