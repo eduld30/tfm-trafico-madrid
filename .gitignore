@@ -3,6 +3,7 @@ downloads/
 ArmTemplateOutput/
 .idea/
 .venv/
+.*test*
 __pycache__
 *.py[cod]
 .pytest_cache/
