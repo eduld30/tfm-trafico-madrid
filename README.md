@@ -386,14 +386,15 @@ efímero, supervisado por el procedimiento de Task 6. Ese procedimiento:
 - valida el resultado completo y elimina todo el staging;
 - elimina las salidas creadas si el run falla.
 
-El smoke autorizado del 30 de agosto de 2026 no materializó el snapshot:
-Databricks serverless rechazó la persistencia de agregados con
-`[NOT_SUPPORTED_WITH_SERVERLESS] PERSIST TABLE is not supported on serverless
-compute`. La ruta efímera queda bloqueada hasta decidir entre un compute clásico
-acotado o una materialización temporal compatible con serverless, revisar el
-cambio y obtener una autorización nueva. No se debe repetir el run actual ni
-eliminar la persistencia sin sustituirla: eso repetiría el scan y los shuffles
-costosos del histórico de tráfico.
+El smoke del 30 de agosto de 2026 no materializó el snapshot porque serverless
+no admite `DataFrame.persist()`. Se adopta como sustitución la materialización
+de resultados intermedios en tablas Delta temporales por run. El micro-smoke
+`scripts/ml/run_serverless_delta_smoke.sh` verificó en el run efímero
+`620408348818773` la creación de una tabla Delta administrada, la escritura y
+lectura de tres filas y su eliminación. También confirmó la eliminación del
+staging y la ausencia de runs activos y jobs guardados. El snapshot completo
+permanece bloqueado hasta sustituir `_persist_materialized` por este patrón,
+revisar el cambio y obtener autorización para una nueva ejecución completa.
 
 No existe integración ADF, schedule ni refresco automático para este snapshot.
 Cada combinación de versiones Silver requiere autorización explícita. Tras una
