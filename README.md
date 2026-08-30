@@ -15,7 +15,8 @@ fuentes HTTP / ficheros estáticos
   -> Azure Data Factory: descarga y organización temporal en landing
   -> Bronze: Auto Loader + metadatos técnicos + Delta externo
   -> Silver: lectura incremental + transformaciones + escritura idempotente
-  -> Unity Catalog: <entorno>_<capa>.<fuente>.<dataset>
+  -> ML manual: snapshots Delta administrados en <gold_catalog>.ml
+  -> Unity Catalog
 ```
 
 Bronze usa Auto Loader con `trigger(availableNow=True)`. Cada dataset mantiene
@@ -132,15 +133,18 @@ Delta ya forman parte del runtime:
 pip install -e .
 ```
 
-Para desarrollo local y pruebas unitarias no se necesita Spark:
+Para desarrollo local y las pruebas de ingesta:
 
 ```powershell
 py -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 ```
 
-El extra `databricks` instala `pyspark` y `delta-spark` únicamente para entornos
-locales que necesiten esas APIs.
+Las pruebas ML usan Spark local y requieren Java y el extra `databricks`:
+
+```bash
+python -m pip install -e ".[dev,databricks]"
+```
 
 ## CLI
 
@@ -328,6 +332,48 @@ Puede inyectarse una `SparkSession` mediante `spark`. En Databricks, si no se
 indica, se utiliza la sesión activa. La ejecución devuelve un `RunResult`, no un
 DataFrame.
 
+## Snapshot ML desde Silver
+
+El módulo `madrid_ml` crea dos tablas Delta administradas en
+`<gold_catalog>.ml`:
+
+| Tabla | Grano |
+|---|---|
+| `accident_labels_hourly` | Una fila por distrito y `feature_hour`, con el número y el indicador de accidentes en la hora siguiente |
+| `features_training_snapshot` | Una fila por distrito y `feature_hour`, con la etiqueta, calendario y agregados históricos de tráfico, meteorología y calidad del aire |
+
+La API fija primero las versiones Delta de las cinco entradas Silver y después
+las lee con `versionAsOf`:
+
+```python
+from madrid_ml import build_training_snapshot
+
+result = build_training_snapshot(
+    spark=spark,
+    silver_catalog="<catalogo_silver>",
+    gold_catalog="<catalogo_gold>",
+    code_commit="<commit_git>",
+    expected_versions=versiones_silver_autorizadas,
+)
+```
+
+`expected_versions` debe contener el nombre completo y la versión Delta
+autorizada de cada tabla Silver de accidentes, distritos, tráfico histórico,
+meteorología histórica y calidad del aire histórica.
+
+La ejecución es manual mediante `notebooks/run_ml_snapshot.py`. El notebook
+recibe los widgets `silver_catalog`, `gold_catalog`, `code_commit` y
+`expected_versions_json`, llama una sola vez a la API y devuelve
+`SnapshotResult` como JSON. No existe un job persistente ni un calendario para
+este snapshot.
+
+El contrato temporal interpreta `fecha_hora` como hora civil ya almacenada en
+Silver y exige una sesión Spark con timezone `Etc/UTC`; no aplica otra
+conversión UTC o DST. Cada fila publicada conserva `snapshot_id`,
+`input_versions_json`, `code_commit`, `feature_schema_version` y
+`time_contract`. El alcance termina en el snapshot de features: no incluye
+entrenamiento ni scoring.
+
 ## XML
 
 El tráfico NRT usa Auto Loader con `cloudFiles.format=xml`. El lector traduce
@@ -355,6 +401,6 @@ respectivas dimensiones de estaciones mediante `lookup_join`.
 .\.venv\Scripts\python.exe -m ruff check src tests
 ```
 
-Las pruebas actuales son unitarias y utilizan dobles de Spark/Delta, por lo que
-no requieren Azure, Java, PySpark ni una sesión Spark local. Las ejecuciones de
-datos se realizan directamente en Databricks.
+Las pruebas de ingesta siguen usando dobles de Spark y Delta. Las pruebas de
+`madrid_ml` ejecutan Spark local con Java, PySpark y Delta instalados mediante
+el extra `databricks`; no acceden a Azure ni a Databricks.
