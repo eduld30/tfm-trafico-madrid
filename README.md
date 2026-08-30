@@ -177,8 +177,7 @@ puede combinar con `--source` ni `--dataset`.
 
 ## Databricks Asset Bundle
 
-El repositorio incluye un bundle para desplegar nueve jobs sin calendario
-propio, ejecutables manualmente o invocados desde Azure Data Factory:
+El repositorio incluye un bundle para desplegar diez jobs sin calendario propio:
 
 ```text
 ingesta_dimensiones
@@ -190,6 +189,7 @@ ingesta_trafico_historico
 ingesta_accidentes_historico
 ingesta_meteo_historico
 ingesta_calair_historico
+ml_training_snapshot
 ```
 
 Cada dataset se ejecuta mediante dos tareas `python_wheel_task` con dependencia
@@ -197,6 +197,12 @@ explícita `Bronze -> Silver`. Los jobs no declaran `run_as` ni clúster: utiliz
 serverless compute con el entorno `default`. En el job de dimensiones, las seis
 ramas se ejecutan en paralelo y cada tarea Silver depende únicamente de la
 carga Bronze de su propio dataset.
+
+`ml_training_snapshot` es un `notebook_task` manual e independiente de ADF.
+Ejecuta `notebooks/run_ml_snapshot.py` con el mismo wheel y entorno serverless
+del bundle. En `dev`, development mode publica el nombre base
+`madrid-ml-training-snapshot` con el prefijo
+`[dev ${workspace.current_user.short_name}]`.
 
 El bundle construye el wheel del paquete, sincroniza `conf/` y despliega los
 targets lógicos `dev` y `pro`. Para preparar el entorno local y desplegar en
@@ -210,15 +216,17 @@ databricks bundle deploy -t dev
 ```
 
 Si se utiliza un perfil distinto del predeterminado, añadir
-`--profile <perfil>` a los comandos del bundle. Tras el despliegue, los jobs se
-pueden lanzar desde `Workflows > Jobs & Pipelines` o desde los pipelines ADF.
+`--profile <perfil>` a los comandos del bundle. Tras el despliegue, todos los
+jobs se pueden lanzar desde `Workflows > Jobs & Pipelines`; los nueve jobs de
+ingesta también pueden invocarse desde los pipelines ADF.
 Las dimensiones deben cargarse primero, ya que los jobs restantes las consultan
 desde sus transformaciones Silver.
 
 La versión del artefacto se hace dinámica en cada despliegue para que serverless
-no reutilice un wheel anterior con el mismo número de versión del proyecto.
-Los calendarios se mantienen en ADF, no en los recursos del bundle. El
-despliegue de ambos componentes está automatizado mediante GitHub Actions.
+no reutilice un wheel anterior con el mismo número de versión del proyecto. Los
+calendarios de ingesta se mantienen en ADF; el job ML no tiene schedule ni
+refresco automático. El despliegue del bundle y ADF está automatizado mediante
+GitHub Actions.
 
 ## Orquestación con Azure Data Factory
 
@@ -361,11 +369,23 @@ result = build_training_snapshot(
 autorizada de cada tabla Silver de accidentes, distritos, tráfico histórico,
 meteorología histórica y calidad del aire histórica.
 
-La ejecución es manual mediante `notebooks/run_ml_snapshot.py`. El notebook
-recibe los widgets `silver_catalog`, `gold_catalog`, `code_commit` y
-`expected_versions_json`, llama una sola vez a la API y devuelve
-`SnapshotResult` como JSON. No existe un job persistente ni un calendario para
-este snapshot.
+La ejecución usa el resource key `ml_training_snapshot` del Asset Bundle. El job
+recibe los parámetros obligatorios `silver_catalog`, `gold_catalog`,
+`code_commit` y `expected_versions_json`, y llama una sola vez a
+`notebooks/run_ml_snapshot.py`. Puede lanzarse manualmente con:
+
+```bash
+databricks bundle run -t dev ml_training_snapshot -- \
+  --silver_catalog="$SILVER_CATALOG" \
+  --gold_catalog="$GOLD_CATALOG" \
+  --code_commit="$CODE_COMMIT" \
+  --expected_versions_json="$EXPECTED_VERSIONS_JSON"
+```
+
+No existe integración ADF, schedule ni refresco automático para este snapshot.
+Cada nueva combinación de versiones Silver requiere autorización explícita; el
+job no descubre ni acepta silenciosamente versiones nuevas. Tras una ejecución,
+las dos tablas Gold se conservan para su uso posterior.
 
 El contrato temporal interpreta `fecha_hora` como hora civil ya almacenada en
 Silver y exige una sesión Spark con timezone `Etc/UTC`; no aplica otra
