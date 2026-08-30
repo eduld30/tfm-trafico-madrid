@@ -198,11 +198,11 @@ serverless compute con el entorno `default`. En el job de dimensiones, las seis
 ramas se ejecutan en paralelo y cada tarea Silver depende únicamente de la
 carga Bronze de su propio dataset.
 
-`ml_training_snapshot` es un `notebook_task` manual e independiente de ADF.
-Ejecuta `notebooks/run_ml_snapshot.py` con el mismo wheel y entorno serverless
-del bundle. En `dev`, development mode publica el nombre base
-`madrid-ml-training-snapshot` con el prefijo
-`[dev ${workspace.current_user.short_name}]`.
+`ml_training_snapshot` es la definición versionada de un `notebook_task` manual
+e independiente de ADF. No está desplegada en el workspace `dev`: el primer
+deploy del bundle raíz crearía también los nueve jobs de ingesta. Por tanto,
+esa definición no se utiliza para materializar el snapshot ML mientras esos
+recursos permanezcan fuera de la frontera de propiedad del equipo ML.
 
 El bundle construye el wheel del paquete, sincroniza `conf/` y despliega los
 targets lógicos `dev` y `pro`. Para preparar el entorno local y desplegar en
@@ -369,23 +369,27 @@ result = build_training_snapshot(
 autorizada de cada tabla Silver de accidentes, distritos, tráfico histórico,
 meteorología histórica y calidad del aire histórica.
 
-La ejecución usa el resource key `ml_training_snapshot` del Asset Bundle. El job
-recibe los parámetros obligatorios `silver_catalog`, `gold_catalog`,
-`code_commit` y `expected_versions_json`, y llama una sola vez a
-`notebooks/run_ml_snapshot.py`. Puede lanzarse manualmente con:
+El resource key `ml_training_snapshot` permanece versionado, pero no es la ruta
+operativa autorizada para crear estas tablas en `dev`. No se debe ejecutar
+`bundle deploy` ni `bundle run` para el snapshot ML: el bundle raíz no permite
+seleccionar un único recurso y su primer deploy crearía también los nueve jobs
+de ingesta.
 
-```bash
-databricks bundle run -t dev ml_training_snapshot -- \
-  --silver_catalog="$SILVER_CATALOG" \
-  --gold_catalog="$GOLD_CATALOG" \
-  --code_commit="$CODE_COMMIT" \
-  --expected_versions_json="$EXPECTED_VERSIONS_JSON"
-```
+El primer snapshot se ejecuta mediante un único `databricks jobs submit`
+efímero, supervisado por el procedimiento de Task 6. Ese procedimiento:
+
+- construye un wheel inequívoco desde un checkout limpio;
+- importa temporalmente el wheel y `notebooks/run_ml_snapshot.py`;
+- exige que las dos salidas Gold estén ausentes;
+- limita el run serverless a 900 segundos, sin cola, reintentos ni
+  auto-optimización;
+- valida el resultado completo y elimina todo el staging;
+- elimina las salidas creadas si el run falla.
 
 No existe integración ADF, schedule ni refresco automático para este snapshot.
-Cada nueva combinación de versiones Silver requiere autorización explícita; el
-job no descubre ni acepta silenciosamente versiones nuevas. Tras una ejecución,
-las dos tablas Gold se conservan para su uso posterior.
+Cada combinación de versiones Silver requiere autorización explícita. Tras una
+ejecución correcta, las dos tablas Gold se conservan para su uso posterior; no
+queda ningún job guardado.
 
 El contrato temporal interpreta `fecha_hora` como hora civil ya almacenada en
 Silver y exige una sesión Spark con timezone `Etc/UTC`; no aplica otra
