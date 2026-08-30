@@ -386,15 +386,16 @@ efímero, supervisado por el procedimiento de Task 6. Ese procedimiento:
 - valida el resultado completo y elimina todo el staging;
 - elimina las salidas creadas si el run falla.
 
-El smoke del 30 de agosto de 2026 no materializó el snapshot porque serverless
-no admite `DataFrame.persist()`. El builder materializa ahora `grid`, `labels`
-y `features` en tablas Delta administradas temporales, verifica su ownership y
-las elimina en `finally`. El micro-smoke
-`.team-workspace/run_serverless_delta_smoke.sh` verificó en el run efímero
-`620408348818773` la creación de una tabla Delta administrada, la escritura y
-lectura de tres filas y su eliminación. También confirmó la eliminación del
-staging y la ausencia de runs activos y jobs guardados. El snapshot completo no
-se ha vuelto a ejecutar y requiere autorización explícita para un nuevo run.
+El primer intento del 30 de agosto de 2026 no materializó el snapshot porque
+serverless no admite `DataFrame.persist()`. Tras sustituirlo por tablas Delta
+administradas temporales con ownership y cleanup en `finally`, el run efímero
+`1074840131667081` ejecutó end-to-end el commit
+`f3e535819b80065e2179cc5d020240ffb03412da` con estado
+`TERMINATED/SUCCESS`. Publicó 1.379.931 filas para cada una de las dos tablas,
+21 distritos, cero duplicados o diferencias respecto al grid y lineage común
+con `snapshot_id=ea719086-1a93-401c-969b-4e92586e13fd`. El cleanup eliminó el
+staging y las tablas temporales; al finalizar no quedaron runs activos ni jobs
+guardados.
 
 No existe integración ADF, schedule ni refresco automático para este snapshot.
 Cada combinación de versiones Silver requiere autorización explícita. Tras una
