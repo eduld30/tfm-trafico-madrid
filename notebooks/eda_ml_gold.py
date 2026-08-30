@@ -40,6 +40,8 @@ from pyspark.sql.types import (
 # MAGIC `expected_snapshot_id` impide analizar silenciosamente un overwrite
 # MAGIC posterior. Para analizar otro snapshot hay que cambiarlo explícitamente.
 
+# COMMAND ----------
+
 dbutils.widgets.text("gold_catalog", "dev_gold", "Catálogo Gold")  # noqa: F821
 dbutils.widgets.text(  # noqa: F821
     "expected_snapshot_id",
@@ -83,6 +85,8 @@ spark.conf.set("spark.sql.session.timeZone", "Etc/UTC")  # noqa: F821
 
 # MAGIC %md
 # MAGIC ## Lectura fijada a versiones Delta
+
+# COMMAND ----------
 
 
 def quoted_name(name: str) -> str:
@@ -185,6 +189,8 @@ def positive_count_expression():
 # MAGIC Este gate comprueba que seguimos leyendo ese mismo snapshot y que sus
 # MAGIC invariantes básicos no han cambiado.
 
+# COMMAND ----------
+
 labels_summary_row = labels.agg(
     F.count(F.lit(1)).cast("long").alias("row_count"),
     F.countDistinct("cod_distrito").cast("long").alias("district_count"),
@@ -273,6 +279,8 @@ display(snapshot_summary)  # noqa: F821
 # MAGIC target y segmentos de evaluación. No se calculan correlaciones ni tests
 # MAGIC estadísticos masivos antes de fijar el protocolo del modelo.
 
+# COMMAND ----------
+
 labels_segmented = (
     labels.withColumn("anio", F.year("feature_hour"))
     .withColumn("mes_calendario", F.month("feature_hour"))
@@ -323,6 +331,8 @@ display(prevalence_segments.orderBy("dimension", "segment_order"))  # noqa: F821
 # MAGIC contrato de unidad/rango; los negativos en columnas de conteo sí rompen el
 # MAGIC contrato. Los nulos y no finitos alimentan la futura política de
 # MAGIC preprocessing, no una imputación inventada en este notebook.
+
+# COMMAND ----------
 
 numeric_fields = [
     field
@@ -444,6 +454,8 @@ display(feature_quality.orderBy("usable_rate", "feature"))  # noqa: F821
 # MAGIC operativo. La cobertura se define por presencia de observaciones, no por
 # MAGIC medias imputadas.
 
+# COMMAND ----------
+
 weather_count_columns = [column for column in count_feature_columns if column.startswith("meteo_")]
 air_count_columns = [column for column in count_feature_columns if column.startswith("calair_")]
 
@@ -503,6 +515,8 @@ display(year_district_coverage.orderBy("anio", "cod_distrito"))  # noqa: F821
 # MAGIC variables automáticamente: cualquier cambio necesita interpretación del
 # MAGIC dominio y contraste con cobertura.
 
+# COMMAND ----------
+
 yearly_scale_expressions = []
 for index, column in enumerate(value_feature_columns):
     yearly_scale_expressions.extend(
@@ -533,6 +547,8 @@ display(yearly_feature_scale.orderBy("feature", "anio"))  # noqa: F821
 
 # MAGIC %md
 # MAGIC ## Gate y decisiones para el siguiente paso
+
+# COMMAND ----------
 
 quality_by_name = {str(record["feature"]): record for record in quality_records}
 for column in count_feature_columns:
