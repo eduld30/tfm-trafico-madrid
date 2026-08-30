@@ -6,9 +6,9 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from hashlib import sha256
 from uuid import uuid4
 
-from pyspark import StorageLevel
 from pyspark.sql import DataFrame, SparkSession, Window
 from pyspark.sql import functions as F
 
@@ -48,6 +48,9 @@ _SQL_TO_SPARK_TYPE = {
     "STRING": "string",
     "TIMESTAMP": "timestamp",
 }
+
+_TEMPORARY_OWNER_PROPERTY = "madrid_ml.snapshot_owner"
+_TEMPORARY_ROLES = frozenset(("grid", "labels", "features"))
 
 
 @dataclass(frozen=True)
@@ -444,13 +447,90 @@ def _validate_output(
     }
 
 
+def _temporary_storage_owner(run_token: str) -> str:
+    normalized = run_token.strip()
+    if not normalized:
+        raise SnapshotContractError("run_token must not be blank")
+    return sha256(normalized.encode("utf-8")).hexdigest()[:24]
+
+
+def _temporary_table_name(gold_catalog: str, owner: str, role: str) -> str:
+    catalog = _validate_identifier(gold_catalog, "gold catalog")
+    if not re.fullmatch(r"[0-9a-f]{24}", owner):
+        raise SnapshotContractError(f"invalid temporary storage owner {owner!r}")
+    if role not in _TEMPORARY_ROLES:
+        raise SnapshotContractError(f"invalid temporary table role {role!r}")
+    return f"{catalog}.{ML_SCHEMA}.__tmp_snapshot_{owner}_{role}"
+
+
 def _persist_materialized(
+    spark: SparkSession,
     df: DataFrame,
-    persisted: list[DataFrame],
-) -> tuple[DataFrame, int]:
-    cached = df.persist(StorageLevel.MEMORY_AND_DISK)
-    persisted.append(cached)
-    return cached, cached.count()
+    table_name: str,
+    owner: str,
+    temporary_tables: list[str],
+) -> DataFrame:
+    quoted_table = _quoted_name(table_name)
+    view_name = _validate_identifier(
+        f"{table_name.rsplit('.', maxsplit=1)[-1]}_view",
+        "temporary view",
+    )
+    df.createOrReplaceTempView(view_name)
+    temporary_tables.append(table_name)
+    try:
+        spark.sql(
+            f"CREATE TABLE {quoted_table} USING DELTA "
+            f"TBLPROPERTIES ('{_TEMPORARY_OWNER_PROPERTY}' = '{owner}') "
+            f"AS SELECT * FROM `{view_name}`"
+        )
+    finally:
+        spark.catalog.dropTempView(view_name)
+
+    return spark.table(table_name)
+
+
+def _drop_owned_temporary_table(
+    spark: SparkSession,
+    table_name: str,
+    owner: str,
+) -> None:
+    if not spark.catalog.tableExists(table_name):
+        return
+    detail = spark.sql(f"DESCRIBE DETAIL {_quoted_name(table_name)}").first()
+    if detail is None:
+        raise SnapshotContractError(
+            f"{table_name}: DESCRIBE DETAIL returned no row during cleanup"
+        )
+    properties = detail["properties"] or {}
+    observed_owner = properties.get(_TEMPORARY_OWNER_PROPERTY)
+    if observed_owner != owner:
+        raise SnapshotContractError(
+            f"refusing to drop temporary table owned by {observed_owner!r}: "
+            f"{table_name}"
+        )
+    spark.sql(f"DROP TABLE {_quoted_name(table_name)}")
+    if spark.catalog.tableExists(table_name):
+        raise SnapshotContractError(
+            f"DROP TABLE left temporary table present: {table_name}"
+        )
+
+
+def _cleanup_temporary_tables(
+    spark: SparkSession,
+    temporary_tables: Sequence[str],
+    owner: str,
+) -> None:
+    failures: list[tuple[str, Exception]] = []
+    for table_name in reversed(temporary_tables):
+        try:
+            _drop_owned_temporary_table(spark, table_name, owner)
+        except Exception as exc:
+            failures.append((table_name, exc))
+    if failures:
+        failed_names = [table_name for table_name, _ in failures]
+        raise SnapshotContractError(
+            f"failed to clean temporary Delta tables {failed_names}"
+        ) from failures[0][1]
 
 
 def _output_summary(df: DataFrame) -> dict[str, int | str]:
@@ -595,15 +675,20 @@ def build_training_snapshot(
 
     snapshot_id = str(uuid4())
     input_versions_json = canonical_versions_json(captured_versions)
-    persisted: list[DataFrame] = []
+    temporary_owner = _temporary_storage_owner(snapshot_id)
+    temporary_tables: list[str] = []
     try:
-        grid, _ = _persist_materialized(
+        grid = _persist_materialized(
+            spark,
             build_district_hour_grid(spark, inputs["districts"]),
-            persisted,
+            _temporary_table_name(gold_catalog, temporary_owner, "grid"),
+            temporary_owner,
+            temporary_tables,
         )
 
         labels_base = build_accident_labels(inputs["accidents"], grid)
-        labels, labels_rows = _persist_materialized(
+        labels = _persist_materialized(
+            spark,
             _select_contract_columns(
                 _add_lineage(
                     labels_base,
@@ -614,8 +699,11 @@ def build_training_snapshot(
                 LABEL_TABLE_COLUMNS,
                 LABEL_TABLE,
             ),
-            persisted,
+            _temporary_table_name(gold_catalog, temporary_owner, "labels"),
+            temporary_owner,
+            temporary_tables,
         )
+        labels_rows = labels.count()
         _validate_output(
             labels,
             grid,
@@ -625,25 +713,17 @@ def build_training_snapshot(
         )
         labels.write.insertInto(labels_table, overwrite=True)
 
-        traffic, _ = _persist_materialized(
-            aggregate_traffic(inputs["traffic"]),
-            persisted,
-        )
-        weather, _ = _persist_materialized(
-            aggregate_magnitudes(inputs["weather"], WEATHER_MAGNITUDES),
-            persisted,
-        )
-        air, _ = _persist_materialized(
-            aggregate_magnitudes(inputs["air"], AIR_MAGNITUDES),
-            persisted,
-        )
+        traffic = aggregate_traffic(inputs["traffic"])
+        weather = aggregate_magnitudes(inputs["weather"], WEATHER_MAGNITUDES)
+        air = aggregate_magnitudes(inputs["air"], AIR_MAGNITUDES)
         features_base = build_feature_snapshot(
             labels,
             traffic,
             weather,
             air,
         )
-        features, features_rows = _persist_materialized(
+        features = _persist_materialized(
+            spark,
             _select_contract_columns(
                 _add_lineage(
                     features_base,
@@ -654,8 +734,11 @@ def build_training_snapshot(
                 FEATURE_TABLE_COLUMNS,
                 FEATURE_TABLE,
             ),
-            persisted,
+            _temporary_table_name(gold_catalog, temporary_owner, "features"),
+            temporary_owner,
+            temporary_tables,
         )
+        features_rows = features.count()
         _validate_output(
             features,
             grid,
@@ -742,5 +825,4 @@ def build_training_snapshot(
             features_lineage=features_lineage,
         )
     finally:
-        for dataframe in reversed(persisted):
-            dataframe.unpersist(blocking=False)
+        _cleanup_temporary_tables(spark, temporary_tables, temporary_owner)

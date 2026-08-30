@@ -387,14 +387,14 @@ efímero, supervisado por el procedimiento de Task 6. Ese procedimiento:
 - elimina las salidas creadas si el run falla.
 
 El smoke del 30 de agosto de 2026 no materializó el snapshot porque serverless
-no admite `DataFrame.persist()`. Se adopta como sustitución la materialización
-de resultados intermedios en tablas Delta temporales por run. El micro-smoke
-`scripts/ml/run_serverless_delta_smoke.sh` verificó en el run efímero
+no admite `DataFrame.persist()`. El builder materializa ahora `grid`, `labels`
+y `features` en tablas Delta administradas temporales, verifica su ownership y
+las elimina en `finally`. El micro-smoke
+`.team-workspace/run_serverless_delta_smoke.sh` verificó en el run efímero
 `620408348818773` la creación de una tabla Delta administrada, la escritura y
 lectura de tres filas y su eliminación. También confirmó la eliminación del
-staging y la ausencia de runs activos y jobs guardados. El snapshot completo
-permanece bloqueado hasta sustituir `_persist_materialized` por este patrón,
-revisar el cambio y obtener autorización para una nueva ejecución completa.
+staging y la ausencia de runs activos y jobs guardados. El snapshot completo no
+se ha vuelto a ejecutar y requiere autorización explícita para un nuevo run.
 
 No existe integración ADF, schedule ni refresco automático para este snapshot.
 Cada combinación de versiones Silver requiere autorización explícita. Tras una
