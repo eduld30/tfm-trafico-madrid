@@ -1,11 +1,8 @@
-from madrid_ml.transformations import (
-    SnapshotContractError,
-    build_accident_labels,
-    build_district_hour_grid,
-)
+from madrid_ml.snapshot import SnapshotResult, build_training_snapshot
+from madrid_ml.transformations import SnapshotContractError
 
 __all__ = [
     "SnapshotContractError",
-    "build_accident_labels",
-    "build_district_hour_grid",
+    "SnapshotResult",
+    "build_training_snapshot",
 ]
