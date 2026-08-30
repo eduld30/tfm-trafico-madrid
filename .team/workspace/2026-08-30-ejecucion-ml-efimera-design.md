@@ -70,7 +70,7 @@ No se ejecutan consultas adicionales sobre las tablas: el builder vuelve a leer 
 
 ## Fallo parcial de publicación
 
-El builder publica labels antes que features. Por ello esta ejecución efímera solo se autoriza cuando ambas salidas están ausentes. En cualquier resultado distinto de `TERMINATED/SUCCESS`, el controlador espera que el run sea terminal y elimina mediante `databricks tables delete` cualquiera de las dos tablas que haya sido creada. Después consulta ambas por la API de Unity Catalog y exige `RESOURCE_DOES_NOT_EXIST`.
+El builder publica labels antes que features. Por ello esta ejecución efímera solo se autoriza cuando ambas salidas están ausentes. En cualquier resultado distinto de `TERMINATED/SUCCESS`, el controlador espera que el run sea terminal y elimina mediante `databricks tables delete` cualquiera de las dos tablas que haya sido creada. Después consulta ambas por la API de Unity Catalog y acepta como ausencia tanto `RESOURCE_DOES_NOT_EXIST` como los errores explícitos `Schema '<schema>' does not exist` y `Table '<full_name>' does not exist`.
 
 No se intenta restaurar una versión anterior: encontrar una tabla preexistente detiene el preflight antes del submit. Esta restricción evita borrar o reemplazar una salida cuyo propietario o estado previo no estén dentro de la autorización.
 
