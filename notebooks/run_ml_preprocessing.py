@@ -23,6 +23,8 @@ from madrid_ml.preprocessing import (
 _IDENTIFIER_PATTERN = re.compile(r"^[a-z_][a-z0-9_]*$")
 _COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+_CONTROLLER_TOKEN_PATTERN = re.compile(r"^omp-ml-preprocessing-[0-9a-f]{32}$")
+_EXPERIMENT_ID_PATTERN = re.compile(r"^[0-9]+$")
 _UC_VOLUME_PATH_PATTERN = re.compile(
     r"^/Volumes/[a-z_][a-z0-9_]*/[a-z_][a-z0-9_]*/"
     r"[a-z_][a-z0-9_]*(?:/[A-Za-z0-9._-]+)*$"
@@ -86,8 +88,9 @@ dbutils.widgets.text("wheel_sha256", "", "Exact wheel SHA-256")  # noqa: F821
 dbutils.widgets.text(  # noqa: F821
     "runtime_environment_version", "", "Databricks environment version"
 )
-dbutils.widgets.text("mlflow_experiment", "", "MLflow experiment path")  # noqa: F821
+dbutils.widgets.text("mlflow_experiment_id", "", "Existing MLflow experiment ID")  # noqa: F821
 dbutils.widgets.text("mlflow_dfs_tmp", "", "MLflow Spark UC volume temp path")  # noqa: F821
+dbutils.widgets.text("controller_token", "", "Smoke ownership token")  # noqa: F821
 
 gold_catalog = required_widget("gold_catalog")
 labels_delta_version = non_negative_version("labels_delta_version")
@@ -97,8 +100,9 @@ preprocessing_code_commit = required_widget("preprocessing_code_commit")
 wheel_path = required_widget("wheel_path")
 wheel_sha256 = required_widget("wheel_sha256")
 runtime_environment_version = required_widget("runtime_environment_version")
-mlflow_experiment = required_widget("mlflow_experiment")
+mlflow_experiment_id = required_widget("mlflow_experiment_id")
 mlflow_dfs_tmp = required_widget("mlflow_dfs_tmp")
+controller_token = required_widget("controller_token")
 
 if not _IDENTIFIER_PATTERN.fullmatch(gold_catalog):
     raise ValueError(f"invalid gold_catalog: {gold_catalog!r}")
@@ -108,8 +112,10 @@ if not _SHA256_PATTERN.fullmatch(wheel_sha256):
     raise ValueError("wheel_sha256 must contain 64 lowercase hex characters")
 if not runtime_environment_version.isdigit():
     raise ValueError("runtime_environment_version must be numeric")
-if not mlflow_experiment.startswith("/Users/"):
-    raise ValueError("mlflow_experiment must be an absolute /Users/... workspace path")
+if not _EXPERIMENT_ID_PATTERN.fullmatch(mlflow_experiment_id):
+    raise ValueError("mlflow_experiment_id must be numeric")
+if not _CONTROLLER_TOKEN_PATTERN.fullmatch(controller_token):
+    raise ValueError("controller_token has an invalid ownership-token format")
 if not _UC_VOLUME_PATH_PATTERN.fullmatch(mlflow_dfs_tmp):
     raise ValueError(
         "mlflow_dfs_tmp must be a path below /Volumes/<catalog>/<schema>/<volume>"
@@ -129,6 +135,7 @@ if observed_wheel_sha256 != wheel_sha256:
 
 package_version = version("madrid-ingestion")
 python_version = platform.python_version()
+spark_version = spark.version  # noqa: F821
 
 prepared = prepare_training_data(
     spark=spark,  # noqa: F821
@@ -147,22 +154,24 @@ artifact_manifest = manifest_to_dict(
     python_version=python_version,
 )
 
-mlflow.set_experiment(mlflow_experiment)
-with mlflow.start_run(run_name=f"preprocessing-{expected_snapshot_id}") as active_run:
-    mlflow.set_tags(
-        {
-            "madrid_ml.snapshot_id": expected_snapshot_id,
-            "madrid_ml.preprocessing_contract_version": (
-                manifest.preprocessing_contract_version
-            ),
-            "madrid_ml.feature_schema_version": manifest.provenance.feature_schema_version,
-            "madrid_ml.preprocessing_code_commit": preprocessing_code_commit,
-            "madrid_ml.snapshot_code_commit": manifest.provenance.code_commit,
-            "madrid_ml.wheel_sha256": wheel_sha256,
-            "madrid_ml.runtime_environment_version": runtime_environment_version,
-            "madrid_ml.spark_version": spark.version,  # noqa: F821
-        }
-    )
+with mlflow.start_run(
+    experiment_id=mlflow_experiment_id,
+    run_name=f"preprocessing-{controller_token}",
+    tags={
+        "madrid_ml.controller_token": controller_token,
+        "madrid_ml.snapshot_id": expected_snapshot_id,
+        "madrid_ml.preprocessing_contract_version": (
+            manifest.preprocessing_contract_version
+        ),
+        "madrid_ml.feature_schema_version": manifest.provenance.feature_schema_version,
+        "madrid_ml.preprocessing_code_commit": preprocessing_code_commit,
+        "madrid_ml.snapshot_code_commit": manifest.provenance.code_commit,
+        "madrid_ml.wheel_sha256": wheel_sha256,
+        "madrid_ml.runtime_environment_version": runtime_environment_version,
+        "madrid_ml.spark_version": spark_version,
+    },
+) as active_run:
+    mlflow_run_id = active_run.info.run_id
     mlflow.log_dict(artifact_manifest, "preprocessing_manifest.json")
     mlflow.log_dict(prepared.quality_by_split, "quality_by_split.json")
     mlflow.log_artifact(wheel_path, artifact_path="package")
@@ -171,11 +180,16 @@ with mlflow.start_run(run_name=f"preprocessing-{expected_snapshot_id}") as activ
         artifact_path="preprocessor",
         dfs_tmpdir=mlflow_dfs_tmp,
     )
-    mlflow_run_id = active_run.info.run_id
+    reload_parity = {}
     loaded_model = mlflow.spark.load_model(
         f"runs:/{mlflow_run_id}/preprocessor",
         dfs_tmpdir=mlflow_dfs_tmp,
     )
+    pipeline_stage_count = len(loaded_model.stages)
+    if pipeline_stage_count != 6:
+        raise RuntimeError(
+            f"reloaded preprocessing pipeline has {pipeline_stage_count} stages, expected 6"
+        )
     reloaded = FittedPreprocessor(
         pipeline_model=loaded_model,
         manifest=manifest,
@@ -194,13 +208,19 @@ with mlflow.start_run(run_name=f"preprocessing-{expected_snapshot_id}") as activ
             raw_sample, split_name=split_name
         )
         actual = reloaded.transform(raw_sample, split_name=split_name)
-        if bounded_vectors(actual) != bounded_vectors(expected):
-            raise RuntimeError(
-                f"reloaded preprocessing vectors differ for {split_name}"
-            )
+        expected_vectors = bounded_vectors(expected)
+        actual_vectors = bounded_vectors(actual)
+        if actual_vectors != expected_vectors:
+            raise RuntimeError(f"reloaded preprocessing vectors differ for {split_name}")
+        reload_parity[split_name] = {
+            "matched": True,
+            "sample_rows": len(expected_vectors),
+        }
 
 result = {
     "status": "PREPROCESSING_READY",
+    "controller_token": controller_token,
+    "mlflow_experiment_id": mlflow_experiment_id,
     "snapshot_id": manifest.provenance.snapshot_id,
     "labels_delta_version": manifest.provenance.labels_delta_version,
     "features_delta_version": manifest.provenance.features_delta_version,
@@ -214,6 +234,11 @@ result = {
     "preprocessing_code_commit": preprocessing_code_commit,
     "wheel_sha256": wheel_sha256,
     "runtime_environment_version": runtime_environment_version,
+    "package_version": package_version,
+    "python_version": python_version,
+    "spark_version": spark_version,
+    "pipeline_stage_count": pipeline_stage_count,
+    "reload_parity": reload_parity,
     "quality_by_split": prepared.quality_by_split,
 }
 dbutils.notebook.exit(  # noqa: F821
