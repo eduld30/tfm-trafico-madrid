@@ -23,6 +23,10 @@ from madrid_ml.preprocessing import (
 _IDENTIFIER_PATTERN = re.compile(r"^[a-z_][a-z0-9_]*$")
 _COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+_UC_VOLUME_PATH_PATTERN = re.compile(
+    r"^/Volumes/[a-z_][a-z0-9_]*/[a-z_][a-z0-9_]*/"
+    r"[a-z_][a-z0-9_]*(?:/[A-Za-z0-9._-]+)*$"
+)
 _FEATURE_COLUMNS = tuple(name for name, _, _ in FEATURE_TABLE_COLUMNS)
 
 
@@ -83,6 +87,7 @@ dbutils.widgets.text(  # noqa: F821
     "runtime_environment_version", "", "Databricks environment version"
 )
 dbutils.widgets.text("mlflow_experiment", "", "MLflow experiment path")  # noqa: F821
+dbutils.widgets.text("mlflow_dfs_tmp", "", "MLflow Spark UC volume temp path")  # noqa: F821
 
 gold_catalog = required_widget("gold_catalog")
 labels_delta_version = non_negative_version("labels_delta_version")
@@ -93,6 +98,7 @@ wheel_path = required_widget("wheel_path")
 wheel_sha256 = required_widget("wheel_sha256")
 runtime_environment_version = required_widget("runtime_environment_version")
 mlflow_experiment = required_widget("mlflow_experiment")
+mlflow_dfs_tmp = required_widget("mlflow_dfs_tmp")
 
 if not _IDENTIFIER_PATTERN.fullmatch(gold_catalog):
     raise ValueError(f"invalid gold_catalog: {gold_catalog!r}")
@@ -104,6 +110,10 @@ if not runtime_environment_version.isdigit():
     raise ValueError("runtime_environment_version must be numeric")
 if not mlflow_experiment.startswith("/Users/"):
     raise ValueError("mlflow_experiment must be an absolute /Users/... workspace path")
+if not _UC_VOLUME_PATH_PATTERN.fullmatch(mlflow_dfs_tmp):
+    raise ValueError(
+        "mlflow_dfs_tmp must be a path below /Volumes/<catalog>/<schema>/<volume>"
+    )
 
 wheel_file = Path(wheel_path)
 if not wheel_path.startswith("/Workspace/") or wheel_file.suffix != ".whl":
@@ -159,9 +169,13 @@ with mlflow.start_run(run_name=f"preprocessing-{expected_snapshot_id}") as activ
     mlflow.spark.log_model(
         prepared.fitted_preprocessor.pipeline_model,
         artifact_path="preprocessor",
+        dfs_tmpdir=mlflow_dfs_tmp,
     )
     mlflow_run_id = active_run.info.run_id
-    loaded_model = mlflow.spark.load_model(f"runs:/{mlflow_run_id}/preprocessor")
+    loaded_model = mlflow.spark.load_model(
+        f"runs:/{mlflow_run_id}/preprocessor",
+        dfs_tmpdir=mlflow_dfs_tmp,
+    )
     reloaded = FittedPreprocessor(
         pipeline_model=loaded_model,
         manifest=manifest,
