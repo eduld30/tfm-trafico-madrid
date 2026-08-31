@@ -1,6 +1,9 @@
 from datetime import datetime, timedelta
 
 import pytest
+from pyspark.ml import PipelineModel
+from pyspark.ml.functions import vector_to_array
+from pyspark.sql import functions as F
 from pyspark.sql.types import (
     DoubleType,
     IntegerType,
@@ -503,3 +506,264 @@ def test_load_gold_rejects_invalid_inputs_before_catalog_access(
             features_delta_version=features_version,
             expected_snapshot_id=snapshot_id,
         )
+
+
+def make_complete_training_frame(spark):
+    return spark.createDataFrame([make_row(index=index) for index in range(504)])
+
+
+def make_test_provenance():
+    from madrid_ml.preprocessing import SnapshotProvenance
+
+    return SnapshotProvenance(
+        labels_table="dev_gold.ml.accident_labels_hourly",
+        features_table="dev_gold.ml.features_training_snapshot",
+        labels_delta_version=1,
+        features_delta_version=1,
+        snapshot_id="snapshot-test",
+        input_versions_json='{"silver.table":7}',
+        code_commit="a" * 40,
+        feature_schema_version="1",
+        time_contract="source_wall_clock_as_stored_in_silver",
+    )
+
+
+def fit_test_preprocessor(spark, train):
+    from madrid_ml.preprocessing import fit_preprocessor
+
+    train_rows = train.count()
+    return fit_preprocessor(
+        train,
+        make_test_provenance(),
+        split_rows={
+            "train": train_rows,
+            "validation": 0,
+            "evaluation": 0,
+            "excluded": 0,
+            "total": train_rows,
+        },
+        spark_version=spark.version,
+    )
+
+
+@pytest.fixture(scope="module")
+def complete_training_frame(spark):
+    return make_complete_training_frame(spark)
+
+
+@pytest.fixture(scope="module")
+def complete_fitted_preprocessor(spark, complete_training_frame):
+    return fit_test_preprocessor(spark, complete_training_frame)
+
+
+def test_fit_preprocessor_learns_median_only_from_train(spark):
+    train = make_complete_training_frame(spark).withColumn(
+        "trafico_intensidad_media",
+        F.when(F.col("cod_distrito") == 1, F.lit(None))
+        .when(F.col("cod_distrito") <= 17, F.lit(10.0))
+        .otherwise(F.lit(20.0)),
+    )
+    validation = spark.createDataFrame(
+        [make_row(index=600, trafico_intensidad_media=1_000_000.0)]
+    )
+
+    fitted = fit_test_preprocessor(spark, train)
+    transformed = fitted.transform(validation, split_name="validation")
+
+    assert fitted.manifest.imputation_medians["trafico_intensidad_media"] == 10.0
+    assert transformed.count() == 1
+
+
+def test_fit_preprocessor_rejects_missing_train_category(spark):
+    train = make_complete_training_frame(spark).where(F.col("cod_distrito") != 21)
+
+    with pytest.raises(PreprocessingContractError, match="cod_distrito"):
+        fit_test_preprocessor(spark, train)
+
+
+def test_fit_preprocessor_rejects_feature_without_valid_train_values(spark):
+    train = make_complete_training_frame(spark).withColumn(
+        "calair_so2_media", F.lit(None).cast("double")
+    )
+
+    with pytest.raises(PreprocessingContractError, match="calair_so2_media"):
+        fit_test_preprocessor(spark, train)
+
+
+def test_fit_preprocessor_rejects_zero_standard_deviation(spark):
+    train = make_complete_training_frame(spark).withColumn(
+        "meteo_temperatura_media", F.lit(7.0)
+    )
+
+    with pytest.raises(PreprocessingContractError, match="meteo_temperatura_media"):
+        fit_test_preprocessor(spark, train)
+
+
+def test_pipeline_model_round_trip_preserves_vector(
+    spark, tmp_path, complete_training_frame, complete_fitted_preprocessor
+):
+    from madrid_ml.preprocessing import FittedPreprocessor
+
+    path = str(tmp_path / "pipeline")
+    complete_fitted_preprocessor.pipeline_model.write().overwrite().save(path)
+    loaded = PipelineModel.load(path)
+    sample = complete_training_frame.limit(5)
+
+    expected = complete_fitted_preprocessor.transform(
+        sample, split_name="train"
+    ).select("features").collect()
+    actual = FittedPreprocessor(
+        loaded, complete_fitted_preprocessor.manifest
+    ).transform(sample, split_name="train").select("features").collect()
+
+    assert actual == expected
+
+
+def test_preprocessing_vector_is_finite_and_has_111_components(
+    complete_training_frame, complete_fitted_preprocessor
+):
+    transformed = complete_fitted_preprocessor.transform(
+        complete_training_frame, split_name="train"
+    )
+
+    sizes = transformed.select(
+        F.size(vector_to_array("features")).alias("size")
+    ).distinct().collect()
+    assert [row.size for row in sizes] == [111]
+    assert transformed.count() == complete_training_frame.count()
+    assert (
+        transformed.select(
+            "cod_distrito", "feature_hour", "target_accident_next_hour"
+        )
+        .exceptAll(
+            complete_training_frame.select(
+                "cod_distrito", "feature_hour", "target_accident_next_hour"
+            )
+        )
+        .count()
+        == 0
+    )
+
+
+def test_preprocessing_vector_remains_finite_after_all_sanitation_cases(
+    spark, complete_fitted_preprocessor
+):
+    sample = spark.createDataFrame(
+        [
+            make_row(
+                trafico_vmed_media=-1.0,
+                trafico_ocupacion_media=float("nan"),
+                meteo_humedad_relativa_media=101.0,
+                meteo_radiacion_solar_media=float("inf"),
+                calair_no2_media=-0.1,
+            )
+        ]
+    )
+
+    vector = complete_fitted_preprocessor.transform(
+        sample, split_name="evaluation"
+    ).select(vector_to_array("features").alias("features")).first().features
+
+    assert len(vector) == 111
+    assert all(
+        value is not None and value == value and abs(value) != float("inf")
+        for value in vector
+    )
+
+
+def test_manifest_preserves_exact_numeric_and_category_contract(
+    complete_fitted_preprocessor,
+):
+    manifest = complete_fitted_preprocessor.manifest
+
+    assert manifest.numeric_features == CONTINUOUS_FEATURES + COUNT_FEATURES
+    assert manifest.available_features == tuple(
+        f"{name}_available" for name in CONTINUOUS_FEATURES
+    )
+    assert manifest.category_labels == {
+        "cod_distrito": tuple(f"{value:02d}" for value in range(1, 22)),
+        "hora_dia": tuple(f"{value:02d}" for value in range(24)),
+        "dia_semana": tuple(str(value) for value in range(1, 8)),
+        "mes": tuple(f"{value:02d}" for value in range(1, 13)),
+    }
+    assert manifest.category_references == {
+        "cod_distrito": "21",
+        "hora_dia": "23",
+        "dia_semana": "7",
+        "mes": "12",
+    }
+    assert manifest.vector_size == 111
+
+
+class DropAllRowsModel:
+    def transform(self, df):
+        return df.limit(0)
+
+
+def test_transform_rejects_row_loss(
+    complete_training_frame, complete_fitted_preprocessor
+):
+    from madrid_ml.preprocessing import FittedPreprocessor
+
+    broken = FittedPreprocessor(
+        DropAllRowsModel(), complete_fitted_preprocessor.manifest
+    )
+
+    with pytest.raises(PreprocessingContractError, match="row"):
+        broken.transform(complete_training_frame, split_name="train")
+
+
+def test_transform_rejects_unknown_split(
+    complete_training_frame, complete_fitted_preprocessor
+):
+    with pytest.raises(PreprocessingContractError, match="split_name"):
+        complete_fitted_preprocessor.transform(
+            complete_training_frame, split_name="excluded"
+        )
+
+
+def test_artifact_manifest_contains_complete_identity(complete_fitted_preprocessor):
+    from madrid_ml.preprocessing import manifest_to_dict
+
+    payload = manifest_to_dict(
+        complete_fitted_preprocessor.manifest,
+        preprocessing_code_commit="b" * 40,
+        wheel_sha256="c" * 64,
+        package_version="0.2.0",
+        runtime_environment_version="4",
+        python_version="3.10.14",
+    )
+
+    assert payload["provenance"]["code_commit"] == "a" * 40
+    assert payload["artifact_identity"] == {
+        "preprocessing_code_commit": "b" * 40,
+        "wheel_sha256": "c" * 64,
+        "package_version": "0.2.0",
+        "runtime_environment_version": "4",
+        "python_version": "3.10.14",
+    }
+    assert payload["spark_version"] == complete_fitted_preprocessor.manifest.spark_version
+    assert payload["session_timezone"] == "Etc/UTC"
+    assert payload["split_periods"]["train"] == (
+        "2019-01-01 00:00:00",
+        "2024-01-01 00:00:00",
+    )
+    assert payload["split_rows"]["train"] == 504
+    assert payload["physical_ranges"]["meteo_presion_media"]["minimum_inclusive"] is False
+    assert len(payload["imputation_medians"]) == 18
+    assert len(payload["scaler_mean"]) == 33
+    assert len(payload["scaler_std"]) == 33
+
+
+def test_public_api_exports_preprocessing_boundary():
+    import madrid_ml
+    from madrid_ml.preprocessing import (
+        FittedPreprocessor,
+        PreparedTrainingData,
+        prepare_training_data,
+    )
+
+    assert madrid_ml.FittedPreprocessor is FittedPreprocessor
+    assert madrid_ml.PreprocessingContractError is PreprocessingContractError
+    assert madrid_ml.PreparedTrainingData is PreparedTrainingData
+    assert madrid_ml.prepare_training_data is prepare_training_data
