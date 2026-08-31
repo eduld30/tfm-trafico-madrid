@@ -409,6 +409,59 @@ conversión UTC o DST. Cada fila publicada conserva `snapshot_id`,
 `time_contract`. El alcance termina en el snapshot de features: no incluye
 entrenamiento ni scoring.
 
+## Preprocessing ML v1
+
+`madrid_ml.prepare_training_data` lee las dos tablas Gold mediante versiones
+Delta explícitas y exige que compartan `snapshot_id`, lineage, schema de
+features y contrato temporal:
+
+```python
+from madrid_ml import prepare_training_data
+
+prepared = prepare_training_data(
+    spark=spark,
+    gold_catalog="dev_gold",
+    labels_delta_version=1,
+    features_delta_version=1,
+    expected_snapshot_id="ea719086-1a93-401c-969b-4e92586e13fd",
+)
+```
+
+El protocolo usa `spark.sql.session.timeZone=Etc/UTC` y conserva cuatro
+intervalos semiabiertos:
+
+| Tramo | Intervalo de `feature_hour` | Filas autorizadas |
+|---|---|---:|
+| Train | `[2019-01-01, 2024-01-01)` | 920.304 |
+| Validación | `[2024-01-01, 2025-01-01)` | 184.464 |
+| Evaluación final | `[2025-01-01, 2026-01-01)` | 183.960 |
+| Excluido | desde `2026-01-01` | 91.203 |
+
+Solo train ajusta estado. Las 18 medias convierten `null`, `NaN`, infinitos y
+valores físicamente inválidos a ausente, crean un indicador de disponibilidad
+y se imputan con la mediana de train. Los 15 conteos se conservan como
+features numéricas. El pipeline estandariza esas 33 componentes y añade 18
+indicadores más 60 componentes one-hot de distrito, hora, día de semana y mes.
+El vector final contiene exactamente 111 valores finitos.
+
+El contrato reproducible no es únicamente el `PipelineModel`: el notebook
+`notebooks/run_ml_preprocessing.py` registra en un único run MLflow:
+
+- `preprocessor/`: estado aprendido por Spark ML;
+- `preprocessing_manifest.json`: versiones Gold, lineage, periodos, reglas
+  físicas, orden de inputs, medianas, escalado, categorías, runtime y paquete;
+- `quality_by_split.json`: ausentes e invalideces por feature y split;
+- `package/`: el wheel exacto, verificado mediante SHA-256 antes de ejecutar.
+
+El preprocessing no materializa otra tabla Gold, no modifica Silver ni
+ingesta, no entrena LightGBM y no realiza scoring. Es un baseline
+retrospectivo: evita fuga del estado aprendido entre splits, pero no afirma
+disponibilidad point-in-time ni latencia de publicación.
+
+La ejecución remota requiere una autorización separada para una única tarea
+serverless acotada y para escribir un run MLflow. Hasta obtenerla no se debe
+enviar el notebook ni crear recursos persistentes.
+
 ## XML
 
 El tráfico NRT usa Auto Loader con `cloudFiles.format=xml`. El lector traduce

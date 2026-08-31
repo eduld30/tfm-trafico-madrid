@@ -1,11 +1,18 @@
 from pathlib import Path
 
+import pytest
+
 COMMAND_SEPARATOR = "# COMMAND ----------"
-NOTEBOOK_PATH = Path(__file__).parents[2] / "notebooks" / "eda_ml_gold.py"
+NOTEBOOK_DIR = Path(__file__).parents[2] / "notebooks"
 
 
-def test_eda_markdown_cells_do_not_swallow_python() -> None:
-    source = NOTEBOOK_PATH.read_text(encoding="utf-8")
+@pytest.mark.parametrize(
+    "notebook_name",
+    ["eda_ml_gold.py", "run_ml_preprocessing.py"],
+)
+def test_ml_markdown_cells_do_not_swallow_python(notebook_name: str) -> None:
+    source = (NOTEBOOK_DIR / notebook_name).read_text(encoding="utf-8")
+
 
     for cell_number, cell in enumerate(source.split(COMMAND_SEPARATOR), start=1):
         lines = [line for line in cell.splitlines() if line.strip()]
