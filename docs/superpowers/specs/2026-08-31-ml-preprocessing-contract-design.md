@@ -2,7 +2,9 @@
 
 ## 1. Objetivo
 
-Definir un preprocessing único, reproducible y sin fuga temporal para el primer baseline de regresión logística sobre `dev_gold.ml.features_training_snapshot`.
+Definir un preprocessing único y reproducible para el primer baseline retrospectivo de regresión logística sobre `dev_gold.ml.features_training_snapshot`.
+
+La v1 evita fuga del estado aprendido entre los splits: ningún estimador usa filas posteriores a 2023 durante `fit`. No demuestra disponibilidad point-in-time ni latencia de publicación porque Gold v1 no contiene `feature_cutoff_ts` o `published_at`.
 
 El contrato resuelve únicamente:
 
@@ -33,14 +35,31 @@ Esta evidencia justifica un tratamiento explícito de ausencia y rangos. No just
 
 ### 3.1 Entrada
 
-El preprocessing acepta únicamente un DataFrame compatible con:
+El entrypoint público recibe:
+
+```text
+spark
+gold_catalog
+labels_delta_version
+features_delta_version
+expected_snapshot_id
+```
+
+Resuelve `accident_labels_hourly` y `features_training_snapshot`, exige las dos versiones
+Gold autorizadas y lee cada tabla mediante `versionAsOf`. Para el snapshot aprobado en
+esta especificación ambas versiones valen `1`.
+
+Antes del `fit`, valida que labels y features comparten el `expected_snapshot_id` y un
+único `input_versions_json`, `code_commit`, `feature_schema_version` y `time_contract`.
+`input_versions_json` conserva las versiones Silver; no sustituye a las versiones Gold
+recibidas explícitamente.
+
+El DataFrame versionado de features debe cumplir:
 
 ```text
 feature_schema_version = "1"
 time_contract = "source_wall_clock_as_stored_in_silver"
 ```
-
-Todas las filas deben compartir un único `snapshot_id`, `input_versions_json`, `code_commit`, `feature_schema_version` y `time_contract`.
 
 La clave lógica permanece:
 
@@ -69,7 +88,25 @@ Los periodos se expresan como intervalos semiabiertos:
 | Evaluación final | `[2025-01-01 00:00:00, 2026-01-01 00:00:00)` | Evaluación final |
 | Fuera del protocolo | Desde `2026-01-01 00:00:00` | Excluido |
 
-Medianas, centro, escala y codificadores se ajustan exclusivamente con train. Validación y evaluación solo ejecutan `transform`.
+Antes de construir los límites, el entrypoint fija
+`spark.sql.session.timeZone="Etc/UTC"` y comprueba que la sesión conserva ese valor.
+El timezone se registra en el manifiesto.
+
+Para el snapshot aprobado, los recuentos exactos son:
+
+| Tramo | Filas |
+|---|---:|
+| Train | 920.304 |
+| Validación | 184.464 |
+| Evaluación final | 183.960 |
+| Excluidas desde 2026 | 91.203 |
+
+Los tres splits incluidos suman 1.288.728 filas. La reconciliación obligatoria es
+`1.288.728 + 91.203 = 1.379.931`. Cada `transform` conserva exactamente las filas,
+labels y claves `(cod_distrito, feature_hour)` de su split; la conservación no se
+compara contra las filas 2026 excluidas.
+
+Medianas, media, desviación estándar y codificadores se ajustan exclusivamente con train. Validación y evaluación solo ejecutan `transform`.
 
 No se realiza split aleatorio, sobremuestreo ni balanceo dentro del preprocessing.
 
@@ -206,7 +243,7 @@ Se permite un conteo positivo con media ausente o inválida. Representa observac
 
 ### 7.1 Imputación
 
-Cada media saneada se imputa con su mediana válida de train mediante Spark ML `Imputer(strategy="median")`.
+Cada media saneada se imputa con su mediana válida de train mediante Spark ML `Imputer(strategy="median", relativeError=0.001)`.
 
 La ejecución falla si una media no tiene ningún valor válido en train. No se imputa mediante:
 
@@ -220,6 +257,48 @@ La ejecución falla si una media no tiene ningún valor válido en train. No se 
 ### 7.2 Escalado numérico
 
 Las 18 medias imputadas y los 15 conteos se ensamblan en un vector numérico de 33 componentes.
+
+La tupla exacta, indexada desde cero, es:
+
+```text
+(
+  trafico_intensidad_media,
+  trafico_ocupacion_media,
+  trafico_carga_media,
+  trafico_vmed_media,
+  meteo_velocidad_viento_media,
+  meteo_temperatura_media,
+  meteo_humedad_relativa_media,
+  meteo_presion_media,
+  meteo_radiacion_solar_media,
+  meteo_precipitacion_media,
+  calair_so2_media,
+  calair_co_media,
+  calair_no_media,
+  calair_no2_media,
+  calair_pm25_media,
+  calair_pm10_media,
+  calair_nox_media,
+  calair_o3_media,
+  trafico_puntos_n,
+  meteo_velocidad_viento_n,
+  meteo_temperatura_n,
+  meteo_humedad_relativa_n,
+  meteo_presion_n,
+  meteo_radiacion_solar_n,
+  meteo_precipitacion_n,
+  calair_so2_n,
+  calair_co_n,
+  calair_no_n,
+  calair_no2_n,
+  calair_pm25_n,
+  calair_pm10_n,
+  calair_nox_n,
+  calair_o3_n,
+)
+```
+
+No se permite intercalar cada media con su conteo ni ordenar columnas por nombre.
 
 Se aplica Spark ML `StandardScaler(withMean=true, withStd=true)` ajustado en train.
 
@@ -272,9 +351,9 @@ Se usará Spark ML y transformaciones DataFrame. No se recopila el dataset en el
 Flujo:
 
 ```text
-Gold versionada
-  -> validar lineage, schema y dominios
-  -> dividir por feature_hour
+Gold leída con versionAsOf
+  -> validar versiones, snapshot, lineage y timezone
+  -> reconciliar y dividir por feature_hour
   -> sanear y crear disponibilidad
   -> fit del preprocessor solo con train
   -> transform de train, validación y evaluación
@@ -302,6 +381,10 @@ El modelo y el preprocessing deben registrar:
 - versiones Delta Gold;
 - commit;
 - runtime;
+- `spark.sql.session.timeZone`;
+- `Imputer.relativeError`;
+- filas por split y filas excluidas;
+- hash o versión del paquete ML;
 - periodos exactos;
 - lista y orden de inputs;
 - reglas físicas;
@@ -311,7 +394,11 @@ El modelo y el preprocessing deben registrar:
 - dimensión final;
 - métricas de ausentes e inválidos por split.
 
-El estado ejecutable reside en el `PipelineModel`. Un `preprocessing_manifest.json` pequeño conserva la evidencia legible junto al run de MLflow.
+Todo el estado aprendido reside en el `PipelineModel`. El saneamiento determinista y
+los indicadores se aplican mediante el wrapper público del paquete
+`madrid_ml.preprocessing` antes de invocar ese modelo. El artefacto de MLflow fija el
+wheel o versión del paquete, el `PipelineModel` y `preprocessing_manifest.json`;
+`PipelineModel` aislado no constituye el contrato completo sobre Gold raw.
 
 No se crea una tabla Gold preprocesada, un feature store ni un segundo snapshot.
 
@@ -321,17 +408,20 @@ Una única excepción pública, `PreprocessingContractError`, indica que el entr
 
 Bloquean la ejecución:
 
-1. schema o lineage incompatible;
-2. snapshot no único;
-3. categoría, target o conteo inválido;
-4. incoherencia de conteo cero con media finita;
-5. ausencia total de valores válidos en train para una media;
-6. categoría esperada ausente en train;
-7. desviación estándar nula;
-8. cambio de filas o labels durante la transformación;
-9. vector no finito;
-10. dimensión distinta de 111;
-11. intento de ajustar estado con validación o evaluación.
+1. versión Gold distinta de la autorizada;
+2. schema o lineage incompatible;
+3. snapshot distinto del esperado o no único;
+4. timezone distinto de `Etc/UTC`;
+5. recuentos por split o reconciliación con las 91.203 filas excluidas incorrectos;
+6. categoría, target o conteo inválido;
+7. incoherencia de conteo cero con media finita;
+8. ausencia total de valores válidos en train para una media;
+9. categoría esperada ausente en train;
+10. desviación estándar nula;
+11. cambio de filas, claves o labels dentro de un split durante la transformación;
+12. vector no finito;
+13. dimensión distinta de 111;
+14. intento de ajustar estado con validación o evaluación.
 
 Los valores continuos inválidos no bloquean individualmente: se convierten a ausentes y se contabilizan.
 
@@ -346,9 +436,12 @@ Pruebas focalizadas:
 5. La mediana de validación no altera el estado aprendido con train.
 6. Conteos y categorías inválidos fallan.
 7. Conteo cero con media finita falla.
-8. Se conservan filas y labels.
-9. El vector final es finito, ordenado y de dimensión 111.
-10. El manifiesto coincide con el `PipelineModel` ajustado.
+8. Los timestamps de frontera se asignan al split correcto con `Etc/UTC`.
+9. Una versión Gold o un `expected_snapshot_id` distintos fallan antes del `fit`.
+10. Los cuatro recuentos del protocolo se reconcilian con 1.379.931.
+11. Se conservan filas, claves y labels dentro de cada split incluido.
+12. El vector final es finito, ordenado y de dimensión 111.
+13. El manifiesto coincide con el `PipelineModel` y el paquete registrados.
 
 Prueba de ejecución:
 
@@ -374,7 +467,8 @@ Fuera de v1:
 - LightGBM;
 - feature store;
 - tabla preprocesada;
-- scoring y paridad histórico/NRT.
+- scoring y paridad histórico/NRT;
+- garantía point-in-time y latencia de publicación;
 
 Estas decisiones se reconsideran únicamente si la regresión logística y la validación 2024 demuestran una limitación concreta.
 
@@ -382,11 +476,14 @@ Estas decisiones se reconsideran únicamente si la regresión logística y la va
 
 El contrato está implementado cuando:
 
-1. la misma entrada y snapshot producen el mismo vector y manifiesto;
+1. la misma entrada versionada, snapshot, paquete, runtime y configuración de sesión producen el mismo vector y manifiesto;
 2. ningún estado aprendido usa filas posteriores a 2023;
-3. no se pierden filas;
-4. todas las ausencias e invalideces quedan observables mediante indicadores y métricas;
-5. el vector tiene 111 componentes finitos;
-6. las pruebas focalizadas pasan;
-7. el smoke serverless sobre Gold termina correctamente y deja cero recursos activos;
-8. el artefacto registrado contiene todo el estado necesario para transformar validación, evaluación e inferencia sin recalcularlo.
+3. la sesión usa `Etc/UTC` y las fronteras se asignan al split correcto;
+4. train, validación, evaluación y exclusiones contienen 920.304, 184.464, 183.960 y 91.203 filas;
+5. cada split incluido conserva sus filas, claves y labels antes y después de `transform`;
+6. las cuatro particiones del protocolo reconcilian las 1.379.931 filas de entrada;
+7. todas las ausencias e invalideces quedan observables mediante indicadores y métricas;
+8. el vector tiene 111 componentes finitos;
+9. las pruebas focalizadas pasan;
+10. el smoke serverless sobre las versiones Gold autorizadas termina correctamente y deja cero recursos activos;
+11. el artefacto registrado y el paquete fijado transforman validación y evaluación sin recalcular estado.
