@@ -1,0 +1,52 @@
+resources:
+  jobs:
+    ml_model_training:
+      name: madrid-ml-model-training
+      max_concurrent_runs: 1
+      parameters:
+        - name: gold_catalog
+          default: ""
+        - name: labels_delta_version
+          default: ""
+        - name: features_delta_version
+          default: ""
+        - name: expected_snapshot_id
+          default: ""
+        - name: mlflow_experiment_id
+          default: ""
+        - name: code_commit
+          default: ""
+      job_clusters:
+        - job_cluster_key: ml_training_cluster
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: ${var.ml_node_type_id}
+            num_workers: 2
+            data_security_mode: SINGLE_USER
+            spark_conf:
+              spark.dynamicAllocation.enabled: "false"
+      tasks:
+        - task_key: train_and_evaluate
+          job_cluster_key: ml_training_cluster
+          max_retries: 0
+          retry_on_timeout: false
+          spark_python_task:
+            python_file: ../../../scripts/ml/train_models.py
+            parameters:
+              - --gold-catalog
+              - "{{job.parameters.gold_catalog}}"
+              - --labels-delta-version
+              - "{{job.parameters.labels_delta_version}}"
+              - --features-delta-version
+              - "{{job.parameters.features_delta_version}}"
+              - --expected-snapshot-id
+              - "{{job.parameters.expected_snapshot_id}}"
+              - --mlflow-experiment-id
+              - "{{job.parameters.mlflow_experiment_id}}"
+              - --code-commit
+              - "{{job.parameters.code_commit}}"
+          libraries:
+            - whl: ../../../dist/*.whl
+            - maven:
+                coordinates: com.microsoft.azure:synapseml_2.12:1.1.3
+                repo: https://mmlspark.blob.core.windows.net/maven

@@ -462,6 +462,32 @@ La ejecución remota requiere una autorización separada para una única tarea
 serverless acotada y para escribir un run MLflow. Hasta obtenerla no se debe
 enviar el notebook ni crear recursos persistentes.
 
+## Entrenamiento y comparación de modelos ML
+
+El flujo de `src/madrid_ml/training.py` compara cinco alternativas sobre el
+mismo snapshot Gold versionado: prevalencia global, frecuencia por distrito,
+frecuencia por distrito/hora/día de semana, regresión logística Spark ML y
+LightGBM SynapseML. Los dos folds internos usan train 2019–2021 con validación
+2022 y train 2019–2022 con validación 2023. Después se reajusta con 2019–2023,
+se compara en 2024 y se registra una evaluación transparente de 2025.
+
+El entrypoint es `scripts/ml/train_models.py`. El bundle independiente vive en
+`bundles/ml` y despliega únicamente `madrid-ml-model-training`; no incluye los
+jobs de ingesta. LightGBM requiere SynapseML 1.1.3 y un clúster clásico con dos
+workers fijos. El tipo de nodo se proporciona mediante `ML_NODE_TYPE_ID`.
+
+Desde `bundles/ml`:
+
+```bash
+databricks bundle validate -t dev --var "ml_node_type_id=$ML_NODE_TYPE_ID"
+databricks bundle deploy -t dev --var "ml_node_type_id=$ML_NODE_TYPE_ID"
+databricks bundle run -t dev --var "ml_node_type_id=$ML_NODE_TYPE_ID" ml_model_training --params "$ML_JOB_PARAMS"
+```
+
+La ejecución solo lee Gold mediante versiones Delta explícitas y escribe runs
+y artefactos compactos en MLflow. No escribe Gold o Silver y no registra
+modelos en Model Registry.
+
 ## XML
 
 El tráfico NRT usa Auto Loader con `cloudFiles.format=xml`. El lector traduce
