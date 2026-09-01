@@ -5,6 +5,7 @@ from madrid_ml.preprocessing import (
     prepare_training_data,
 )
 from madrid_ml.snapshot import SnapshotResult, build_training_snapshot
+from madrid_ml.training import TrainingConfig, TrainingResult, run_model_training
 from madrid_ml.transformations import SnapshotContractError
 
 __all__ = [
@@ -14,5 +15,8 @@ __all__ = [
     "SnapshotContractError",
     "SnapshotResult",
     "build_training_snapshot",
+    "TrainingConfig",
+    "TrainingResult",
     "prepare_training_data",
+    "run_model_training",
 ]
