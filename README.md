@@ -473,15 +473,18 @@ se compara en 2024 y se registra una evaluación transparente de 2025.
 
 El entrypoint es `scripts/ml/train_models.py`. El bundle independiente vive en
 `bundles/ml` y despliega únicamente `madrid-ml-model-training`; no incluye los
-jobs de ingesta. LightGBM requiere SynapseML 1.1.3 y un clúster clásico con dos
-workers fijos. El tipo de nodo se proporciona mediante `ML_NODE_TYPE_ID`.
+jobs de ingesta. LightGBM requiere SynapseML 1.1.3 y un job cluster clásico con
+dos workers fijos. El Job tiene un límite duro de 60 minutos, cero reintentos y
+el job cluster termina automáticamente al finalizar. El tipo de nodo se
+proporciona mediante `ML_NODE_TYPE_ID`.
 
 Desde `bundles/ml`:
 
 ```bash
-databricks bundle validate -t dev --var "ml_node_type_id=$ML_NODE_TYPE_ID"
-databricks bundle deploy -t dev --var "ml_node_type_id=$ML_NODE_TYPE_ID"
-databricks bundle run -t dev --var "ml_node_type_id=$ML_NODE_TYPE_ID" ml_model_training --params "$ML_JOB_PARAMS"
+export DATABRICKS_AUTH_STORAGE=plaintext
+databricks bundle validate -t dev --profile tfm-dev --var "ml_node_type_id=$ML_NODE_TYPE_ID"
+databricks bundle deploy -t dev --profile tfm-dev --var "ml_node_type_id=$ML_NODE_TYPE_ID"
+databricks bundle run -t dev --profile tfm-dev --var "ml_node_type_id=$ML_NODE_TYPE_ID" ml_model_training --params "$ML_JOB_PARAMS"
 ```
 
 La ejecución solo lee Gold mediante versiones Delta explícitas y escribe runs

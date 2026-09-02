@@ -14,9 +14,7 @@ artifacts:
 
 sync:
   paths:
-    - ../..
-  include:
-    - scripts/ml/train_models.py
+    - ../../scripts/ml
 
 variables:
   ml_node_type_id:
