@@ -4,6 +4,8 @@ resources:
       name: madrid-ml-model-training
       max_concurrent_runs: 1
       timeout_seconds: 3600
+      queue:
+        enabled: false
       parameters:
         - name: gold_catalog
           default: ""

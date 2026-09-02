@@ -474,9 +474,9 @@ se compara en 2024 y se registra una evaluación transparente de 2025.
 El entrypoint es `scripts/ml/train_models.py`. El bundle independiente vive en
 `bundles/ml` y despliega únicamente `madrid-ml-model-training`; no incluye los
 jobs de ingesta. LightGBM requiere SynapseML 1.1.3 y un job cluster clásico con
-dos workers fijos. El Job tiene un límite duro de 60 minutos, cero reintentos y
-el job cluster termina automáticamente al finalizar. El tipo de nodo se
-proporciona mediante `ML_NODE_TYPE_ID`.
+dos workers fijos. El Job tiene un límite duro de 60 minutos, cero reintentos,
+cola desactivada y terminación automática del job cluster al finalizar. El tipo
+de nodo se proporciona mediante `ML_NODE_TYPE_ID`.
 
 Desde `bundles/ml`:
 
