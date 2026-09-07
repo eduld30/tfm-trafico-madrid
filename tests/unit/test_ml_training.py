@@ -1,11 +1,16 @@
 import math
+import sys
+from contextlib import nullcontext
 from dataclasses import replace
 from datetime import datetime
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 from pyspark.ml.linalg import Vectors
 
 from madrid_ml.models import LIGHTGBM_VERSION, fit_lightgbm, score_lightgbm
+from madrid_ml.tracking import log_baseline_run
 from madrid_ml.training import (
     BacktestScore,
     TrainingConfig,
@@ -95,3 +100,28 @@ def test_training_config_requires_a_unity_catalog_volume_path():
 
     with pytest.raises(ValueError, match="Unity Catalog volume path"):
         replace(valid, mlflow_dfs_tmp="/tmp/mlflow")
+
+
+def test_child_run_uses_the_parent_experiment(monkeypatch):
+    mlflow = SimpleNamespace(
+        start_run=Mock(
+            return_value=nullcontext(
+                SimpleNamespace(info=SimpleNamespace(run_id="child-run"))
+            )
+        ),
+        log_params=Mock(),
+        log_dict=Mock(),
+    )
+    monkeypatch.setitem(sys.modules, "mlflow", mlflow)
+
+    run_id = log_baseline_run(
+        experiment_id="725276488056607",
+        parent_run_id="parent-run",
+        comparator="global_prevalence",
+        parameters={},
+        evaluations={},
+        state={},
+    )
+
+    assert run_id == "child-run"
+    assert mlflow.start_run.call_args.kwargs["experiment_id"] == "725276488056607"

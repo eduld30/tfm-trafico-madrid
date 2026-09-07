@@ -81,6 +81,7 @@ def _log_model_metadata(
 def log_baseline_run(
     *,
     parent_run_id: str,
+    experiment_id: str,
     comparator: str,
     parameters: Mapping[str, object],
     evaluations: Mapping[str, object],
@@ -90,6 +91,7 @@ def log_baseline_run(
     import mlflow
 
     with mlflow.start_run(
+        experiment_id=experiment_id,
         run_name=comparator,
         nested=True,
         tags={"mlflow.parentRunId": parent_run_id, "madrid_ml.comparator": comparator},
@@ -103,6 +105,7 @@ def log_baseline_run(
 
 def log_spark_model_run(
     *,
+    experiment_id: str,
     parent_run_id: str,
     comparator: str,
     parameters: Mapping[str, object],
@@ -116,6 +119,7 @@ def log_spark_model_run(
     import mlflow
 
     with mlflow.start_run(
+        experiment_id=experiment_id,
         run_name=comparator,
         nested=True,
         tags={"mlflow.parentRunId": parent_run_id, "madrid_ml.comparator": comparator},
@@ -140,6 +144,7 @@ def log_spark_model_run(
 
 def log_lightgbm_run(
     *,
+    experiment_id: str,
     parent_run_id: str,
     comparator: str,
     parameters: Mapping[str, object],
@@ -153,6 +158,7 @@ def log_lightgbm_run(
     import mlflow
 
     with mlflow.start_run(
+        experiment_id=experiment_id,
         run_name=comparator,
         nested=True,
         tags={"mlflow.parentRunId": parent_run_id, "madrid_ml.comparator": comparator},

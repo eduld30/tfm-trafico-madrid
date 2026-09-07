@@ -514,6 +514,7 @@ def run_model_training(
         baseline_states = _baseline_states(baseline_state)
         for comparator in BASELINE_COMPARATORS.values():
             child_run_ids[comparator] = log_baseline_run(
+                experiment_id=config.mlflow_experiment_id,
                 parent_run_id=parent_run_id,
                 comparator=comparator,
                 parameters={"training_period": "2019-2023"},
@@ -533,6 +534,7 @@ def run_model_training(
 
         logistic_config = selected_configs["logistic_regression"]
         child_run_ids["logistic_regression"] = log_spark_model_run(
+            experiment_id=config.mlflow_experiment_id,
             parent_run_id=parent_run_id,
             comparator="logistic_regression",
             parameters={"config_name": logistic_config, **LOGISTIC_CONFIGS[logistic_config]},
@@ -549,6 +551,7 @@ def run_model_training(
 
         lightgbm_config = selected_configs["lightgbm"]
         child_run_ids["lightgbm"] = log_lightgbm_run(
+            experiment_id=config.mlflow_experiment_id,
             parent_run_id=parent_run_id,
             comparator="lightgbm",
             parameters={
