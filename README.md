@@ -467,29 +467,35 @@ enviar el notebook ni crear recursos persistentes.
 El flujo de `src/madrid_ml/training.py` compara cinco alternativas sobre el
 mismo snapshot Gold versionado: prevalencia global, frecuencia por distrito,
 frecuencia por distrito/hora/día de semana, regresión logística Spark ML y
-LightGBM SynapseML. Los dos folds internos usan train 2019–2021 con validación
-2022 y train 2019–2022 con validación 2023. Después se reajusta con 2019–2023,
-se compara en 2024 y se registra una evaluación transparente de 2025.
+LightGBM Python nativo. Los dos folds internos usan train 2019–2021 con
+validación 2022 y train 2019–2022 con validación 2023. Después se reajusta con
+2019–2023, se compara en 2024 y se registra una evaluación transparente de
+2025.
 
 El entrypoint es `scripts/ml/train_models.py`. El bundle independiente vive en
 `bundles/ml` y despliega únicamente `madrid-ml-model-training`; no incluye los
-jobs de ingesta. LightGBM requiere SynapseML 1.1.3 y un job cluster clásico con
-dos workers fijos. El Job tiene un límite duro de 60 minutos, cero reintentos,
-cola desactivada y terminación automática del job cluster al finalizar. El tipo
-de nodo se proporciona mediante `ML_NODE_TYPE_ID`.
+jobs de ingesta. La tarea usa compute serverless, entorno versión 4 y
+`lightgbm==4.6.0`. Spark conserva el preprocessing, la regresión logística y la
+evaluación distribuida. LightGBM recoge únicamente el split de entrenamiento
+ya transformado en una matriz de 111 atributos y puntúa validación y evaluación
+mediante batches distribuidos, sin recoger esos datasets en el proceso Python.
+
+El Job tiene un límite duro de 60 minutos, cero reintentos, auto-optimización
+serverless desactivada, cola desactivada y ninguna planificación automática.
+Databricks libera el compute serverless al alcanzar un estado terminal.
 
 Desde `bundles/ml`:
 
 ```bash
-export DATABRICKS_AUTH_STORAGE=plaintext
-databricks bundle validate -t dev --profile tfm-dev --var "ml_node_type_id=$ML_NODE_TYPE_ID"
-databricks bundle deploy -t dev --profile tfm-dev --var "ml_node_type_id=$ML_NODE_TYPE_ID"
-databricks bundle run -t dev --profile tfm-dev --var "ml_node_type_id=$ML_NODE_TYPE_ID" ml_model_training --params "$ML_JOB_PARAMS"
+databricks bundle validate -t dev --profile tfm-dev
+databricks bundle deploy -t dev --profile tfm-dev
+databricks bundle run -t dev --profile tfm-dev ml_model_training --params "$ML_JOB_PARAMS"
 ```
 
 La ejecución solo lee Gold mediante versiones Delta explícitas y escribe runs
-y artefactos compactos en MLflow. No escribe Gold o Silver y no registra
-modelos en Model Registry.
+y artefactos compactos en MLflow. El preprocessor y la regresión logística usan
+el flavor `mlflow.spark`; LightGBM usa `mlflow.lightgbm`. No escribe Gold o
+Silver y no registra modelos en Model Registry.
 
 ## XML
 

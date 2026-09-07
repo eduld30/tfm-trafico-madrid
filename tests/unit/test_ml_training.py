@@ -1,5 +1,9 @@
+import math
 from datetime import datetime
 
+from pyspark.ml.linalg import Vectors
+
+from madrid_ml.models import LIGHTGBM_VERSION, fit_lightgbm, score_lightgbm
 from madrid_ml.training import BacktestScore, build_temporal_folds, select_config
 
 
@@ -30,3 +34,37 @@ def test_select_config_uses_mean_ap_and_simple_tie_break():
     ]
 
     assert select_config(scores, "logistic_regression") == "l2_0_1"
+
+
+def test_native_lightgbm_fits_and_scores_a_spark_frame(spark):
+    frame = spark.createDataFrame(
+        [
+            (Vectors.dense(0.0, 0.0), 0.0),
+            (Vectors.dense(0.0, 1.0), 0.0),
+            (Vectors.dense(1.0, 0.0), 1.0),
+            (Vectors.dense(1.0, 1.0), 1.0),
+        ],
+        ["features", "target_accident_next_hour"],
+    )
+
+    model = fit_lightgbm(
+        frame,
+        config_name="leaves_31",
+        vector_size=2,
+        fold_name="test",
+    )
+    scores = [
+        row.score
+        for row in score_lightgbm(
+            model,
+            frame,
+            comparator="lightgbm",
+            vector_size=2,
+        )
+        .select("score")
+        .collect()
+    ]
+
+    assert LIGHTGBM_VERSION == "4.6.0"
+    assert len(scores) == 4
+    assert all(math.isfinite(score) and 0.0 <= score <= 1.0 for score in scores)

@@ -16,9 +16,6 @@ sync:
   paths:
     - ../../scripts/ml
 
-variables:
-  ml_node_type_id:
-    description: "Node type autorizado para el job cluster ML"
 
 targets:
   dev:

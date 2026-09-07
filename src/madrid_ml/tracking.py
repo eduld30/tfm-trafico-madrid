@@ -4,13 +4,18 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
+from typing import TYPE_CHECKING
 
 from pyspark.ml import Model, PipelineModel
 from pyspark.ml.functions import vector_to_array
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
+from madrid_ml.models import collect_lightgbm_features
 from madrid_ml.preprocessing import FittedPreprocessor, PreprocessingManifest
+
+if TYPE_CHECKING:
+    from lightgbm import LGBMClassifier
 
 
 @contextmanager
@@ -54,6 +59,20 @@ def _log_global_metrics(evaluations: Mapping[str, object]) -> None:
         mlflow.log_metrics(metrics)
 
 
+def _log_model_metadata(
+    *,
+    parameters: Mapping[str, object],
+    evaluations: Mapping[str, object],
+    backtest: Sequence[Mapping[str, object]],
+) -> None:
+    import mlflow
+
+    mlflow.log_params(dict(parameters))
+    _log_global_metrics(evaluations)
+    mlflow.log_dict(dict(evaluations), "evaluation.json")
+    mlflow.log_dict({"folds": list(backtest)}, "backtest.json")
+
+
 def log_baseline_run(
     *,
     parent_run_id: str,
@@ -77,7 +96,7 @@ def log_baseline_run(
         return active_run.info.run_id
 
 
-def log_model_run(
+def log_spark_model_run(
     *,
     parent_run_id: str,
     comparator: str,
@@ -85,8 +104,9 @@ def log_model_run(
     evaluations: Mapping[str, object],
     backtest: Sequence[Mapping[str, object]],
     model: Model,
+    validation_sample: DataFrame,
 ) -> str:
-    """Register one fitted classifier and its compact evaluation artifacts."""
+    """Register, reload, and verify one fitted Spark classifier."""
     import mlflow
 
     with mlflow.start_run(
@@ -94,49 +114,107 @@ def log_model_run(
         nested=True,
         tags={"mlflow.parentRunId": parent_run_id, "madrid_ml.comparator": comparator},
     ) as active_run:
-        mlflow.log_params(dict(parameters))
-        _log_global_metrics(evaluations)
-        mlflow.log_dict(dict(evaluations), "evaluation.json")
-        mlflow.log_dict({"folds": list(backtest)}, "backtest.json")
+        _log_model_metadata(
+            parameters=parameters,
+            evaluations=evaluations,
+            backtest=backtest,
+        )
         mlflow.spark.log_model(model, artifact_path="classifier")
+        logged_model = mlflow.spark.load_model(
+            f"runs:/{active_run.info.run_id}/classifier"
+        )
+        _verify_spark_scores(logged_model, validation_sample)
         return active_run.info.run_id
 
 
-def verify_logged_models(
+def log_lightgbm_run(
     *,
     parent_run_id: str,
-    model_run_ids: Mapping[str, str],
+    comparator: str,
+    parameters: Mapping[str, object],
+    evaluations: Mapping[str, object],
+    backtest: Sequence[Mapping[str, object]],
+    model: LGBMClassifier,
+    validation_sample: DataFrame,
+    vector_size: int,
+) -> str:
+    """Register, reload, and verify one fitted native LightGBM classifier."""
+    import mlflow
+
+    with mlflow.start_run(
+        run_name=comparator,
+        nested=True,
+        tags={"mlflow.parentRunId": parent_run_id, "madrid_ml.comparator": comparator},
+    ) as active_run:
+        _log_model_metadata(
+            parameters=parameters,
+            evaluations=evaluations,
+            backtest=backtest,
+        )
+        mlflow.lightgbm.log_model(model, artifact_path="classifier")
+        logged_model = mlflow.lightgbm.load_model(
+            f"runs:/{active_run.info.run_id}/classifier"
+        )
+        _verify_lightgbm_scores(
+            logged_model,
+            validation_sample,
+            vector_size=vector_size,
+        )
+        return active_run.info.run_id
+
+
+def _verify_spark_scores(model: Model, prepared_sample: DataFrame) -> None:
+    score = vector_to_array(F.col("probability"))[1]
+    summary = model.transform(prepared_sample).select(score.alias("score")).agg(
+        F.count(F.lit(1)).alias("rows"),
+        F.sum(
+            F.when(
+                F.col("score").isNull()
+                | F.isnan("score")
+                | (F.col("score") < 0.0)
+                | (F.col("score") > 1.0),
+                1,
+            ).otherwise(0)
+        ).alias("invalid_scores"),
+    ).first()
+    if summary.rows != 32 or summary.invalid_scores:
+        raise RuntimeError(
+            "reloaded logistic_regression produced invalid validation scores: "
+            f"rows={summary.rows}, invalid_scores={summary.invalid_scores}"
+        )
+
+
+def _verify_lightgbm_scores(
+    model: LGBMClassifier,
+    prepared_sample: DataFrame,
+    *,
+    vector_size: int,
+) -> None:
+    import numpy as np
+
+    features = collect_lightgbm_features(prepared_sample, vector_size=vector_size)
+    scores = np.asarray(model.predict_proba(features)[:, 1], dtype=np.float64)
+    invalid_scores = int((~np.isfinite(scores) | (scores < 0.0) | (scores > 1.0)).sum())
+    if scores.shape != (32,) or invalid_scores:
+        raise RuntimeError(
+            "reloaded lightgbm produced invalid validation scores: "
+            f"rows={scores.size}, invalid_scores={invalid_scores}"
+        )
+
+
+def load_logged_preprocessor(
+    *,
+    parent_run_id: str,
     raw_validation_sample: DataFrame,
     manifest: PreprocessingManifest,
-) -> None:
-    """Reload logged Spark artifacts and require 32 bounded model scores."""
+) -> DataFrame:
+    """Reload the parent preprocessor and transform the validation sample."""
     import mlflow
 
     loaded_pipeline = mlflow.spark.load_model(f"runs:/{parent_run_id}/preprocessor")
     if not isinstance(loaded_pipeline, PipelineModel):
         raise RuntimeError("reloaded preprocessor is not a Spark PipelineModel")
-    prepared_sample = FittedPreprocessor(
+    return FittedPreprocessor(
         pipeline_model=loaded_pipeline,
         manifest=manifest,
     ).transform(raw_validation_sample, split_name="validation")
-
-    for comparator, run_id in model_run_ids.items():
-        model = mlflow.spark.load_model(f"runs:/{run_id}/classifier")
-        score = vector_to_array(F.col("probability"))[1]
-        summary = model.transform(prepared_sample).select(score.alias("score")).agg(
-            F.count(F.lit(1)).alias("rows"),
-            F.sum(
-                F.when(
-                    F.col("score").isNull()
-                    | F.isnan("score")
-                    | (F.col("score") < 0.0)
-                    | (F.col("score") > 1.0),
-                    1,
-                ).otherwise(0)
-            ).alias("invalid_scores"),
-        ).first()
-        if summary.rows != 32 or summary.invalid_scores:
-            raise RuntimeError(
-                f"reloaded {comparator} produced invalid validation scores: "
-                f"rows={summary.rows}, invalid_scores={summary.invalid_scores}"
-            )

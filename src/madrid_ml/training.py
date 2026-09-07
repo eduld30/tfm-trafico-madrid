@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import json
-import os
 import platform
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from decimal import Decimal
 
-from pyspark import StorageLevel
 from pyspark.ml import Estimator, Model
 from pyspark.ml.functions import vector_to_array
 from pyspark.sql import DataFrame, SparkSession
@@ -24,10 +22,11 @@ from madrid_ml.evaluation import (
 )
 from madrid_ml.models import (
     LIGHTGBM_CONFIGS,
+    LIGHTGBM_VERSION,
     LOGISTIC_CONFIGS,
-    SYNAPSEML_VERSION,
-    build_lightgbm,
     build_logistic_regression,
+    fit_lightgbm,
+    score_lightgbm,
 )
 from madrid_ml.preprocessing import (
     GoldTrainingSnapshot,
@@ -37,10 +36,11 @@ from madrid_ml.preprocessing import (
     split_training_snapshot,
 )
 from madrid_ml.tracking import (
+    load_logged_preprocessor,
     log_baseline_run,
-    log_model_run,
+    log_lightgbm_run,
+    log_spark_model_run,
     start_training_run,
-    verify_logged_models,
 )
 
 TRAINING_COMPLETE = "TRAINING_COMPLETE"
@@ -277,72 +277,71 @@ def _run_backtest(
         transformed_train = fitted_preprocessor.transform(
             fold.train,
             split_name="train",
-        ).persist(StorageLevel.MEMORY_AND_DISK)
+        )
         transformed_validation = fitted_preprocessor.transform(
             fold.validation,
             split_name="validation",
         )
-        try:
-            baseline_state = fit_baselines(fold.train)
-            for key, comparator in BASELINE_COMPARATORS.items():
-                metrics = global_binary_metrics(
-                    score_baselines(baseline_state, fold.validation)[key]
-                )
-                baseline_results[comparator].append(
-                    {"fold_name": fold.name, **metrics}
-                )
+        baseline_state = fit_baselines(fold.train)
+        for key, comparator in BASELINE_COMPARATORS.items():
+            metrics = global_binary_metrics(
+                score_baselines(baseline_state, fold.validation)[key]
+            )
+            baseline_results[comparator].append({"fold_name": fold.name, **metrics})
 
-            for config_name in LOGISTIC_CONFIGS:
-                model = _fit_model(
-                    build_logistic_regression(config_name),
-                    transformed_train,
-                    model_name="logistic_regression",
-                    config_name=config_name,
-                    fold_name=fold.name,
+        for config_name in LOGISTIC_CONFIGS:
+            model = _fit_model(
+                build_logistic_regression(config_name),
+                transformed_train,
+                model_name="logistic_regression",
+                config_name=config_name,
+                fold_name=fold.name,
+            )
+            metrics = global_binary_metrics(
+                _score_model(model, transformed_validation, "logistic_regression")
+            )
+            scores.append(
+                BacktestScore(
+                    "logistic_regression",
+                    config_name,
+                    fold.name,
+                    _require_average_precision(
+                        metrics,
+                        model_name="logistic_regression",
+                        config_name=config_name,
+                        fold_name=fold.name,
+                    ),
                 )
-                metrics = global_binary_metrics(
-                    _score_model(model, transformed_validation, "logistic_regression")
-                )
-                scores.append(
-                    BacktestScore(
-                        "logistic_regression",
-                        config_name,
-                        fold.name,
-                        _require_average_precision(
-                            metrics,
-                            model_name="logistic_regression",
-                            config_name=config_name,
-                            fold_name=fold.name,
-                        ),
-                    )
-                )
+            )
 
-            for config_name in LIGHTGBM_CONFIGS:
-                model = _fit_model(
-                    build_lightgbm(config_name),
-                    transformed_train,
-                    model_name="lightgbm",
-                    config_name=config_name,
-                    fold_name=fold.name,
+        for config_name in LIGHTGBM_CONFIGS:
+            model = fit_lightgbm(
+                transformed_train,
+                config_name=config_name,
+                vector_size=fitted_preprocessor.manifest.vector_size,
+                fold_name=fold.name,
+            )
+            metrics = global_binary_metrics(
+                score_lightgbm(
+                    model,
+                    transformed_validation,
+                    comparator="lightgbm",
+                    vector_size=fitted_preprocessor.manifest.vector_size,
                 )
-                metrics = global_binary_metrics(
-                    _score_model(model, transformed_validation, "lightgbm")
+            )
+            scores.append(
+                BacktestScore(
+                    "lightgbm",
+                    config_name,
+                    fold.name,
+                    _require_average_precision(
+                        metrics,
+                        model_name="lightgbm",
+                        config_name=config_name,
+                        fold_name=fold.name,
+                    ),
                 )
-                scores.append(
-                    BacktestScore(
-                        "lightgbm",
-                        config_name,
-                        fold.name,
-                        _require_average_precision(
-                            metrics,
-                            model_name="lightgbm",
-                            config_name=config_name,
-                            fold_name=fold.name,
-                        ),
-                    )
-                )
-        finally:
-            transformed_train.unpersist()
+            )
 
     return scores, baseline_results
 
@@ -352,7 +351,6 @@ def _parent_tags(
     config: TrainingConfig,
     snapshot: GoldTrainingSnapshot,
     spark: SparkSession,
-    runtime_version: str,
     manifest: PreprocessingManifest,
 ) -> dict[str, str]:
     provenance = snapshot.provenance
@@ -363,10 +361,9 @@ def _parent_tags(
         "madrid_ml.code_commit": config.code_commit,
         "madrid_ml.snapshot_code_commit": provenance.code_commit,
         "madrid_ml.package_version": config.package_version,
-        "madrid_ml.databricks_runtime_version": runtime_version,
         "madrid_ml.spark_version": spark.version,
         "madrid_ml.python_version": platform.python_version(),
-        "madrid_ml.synapseml_version": SYNAPSEML_VERSION,
+        "madrid_ml.lightgbm_version": LIGHTGBM_VERSION,
         "madrid_ml.feature_schema_version": provenance.feature_schema_version,
         "madrid_ml.preprocessing_contract_version": (
             manifest.preprocessing_contract_version
@@ -384,9 +381,6 @@ def run_model_training(
     config: TrainingConfig,
 ) -> TrainingResult:
     """Train, compare, log, reload, and return the five approved comparators."""
-    runtime_version = os.environ.get("DATABRICKS_RUNTIME_VERSION")
-    if not runtime_version:
-        raise RuntimeError("DATABRICKS_RUNTIME_VERSION is not available")
 
     snapshot = load_gold_training_snapshot(
         spark,
@@ -417,7 +411,7 @@ def run_model_training(
     transformed_train = final_preprocessor.transform(
         splits.train,
         split_name="train",
-    ).persist(StorageLevel.MEMORY_AND_DISK)
+    )
     transformed_validation = final_preprocessor.transform(
         splits.validation,
         split_name="validation",
@@ -432,7 +426,6 @@ def run_model_training(
         config=config,
         snapshot=snapshot,
         spark=spark,
-        runtime_version=runtime_version,
         manifest=final_preprocessor.manifest,
     )
     child_run_ids: dict[str, str] = {}
@@ -445,25 +438,19 @@ def run_model_training(
         manifest=asdict(final_preprocessor.manifest),
         preprocessor=final_preprocessor.pipeline_model,
     ) as parent_run_id:
-        try:
-            logistic_model = _fit_model(
-                build_logistic_regression(
-                    selected_configs["logistic_regression"]
-                ),
-                transformed_train,
-                model_name="logistic_regression",
-                config_name=selected_configs["logistic_regression"],
-                fold_name="final_2019_2023",
-            )
-            lightgbm_model = _fit_model(
-                build_lightgbm(selected_configs["lightgbm"]),
-                transformed_train,
-                model_name="lightgbm",
-                config_name=selected_configs["lightgbm"],
-                fold_name="final_2019_2023",
-            )
-        finally:
-            transformed_train.unpersist()
+        logistic_model = _fit_model(
+            build_logistic_regression(selected_configs["logistic_regression"]),
+            transformed_train,
+            model_name="logistic_regression",
+            config_name=selected_configs["logistic_regression"],
+            fold_name="final_2019_2023",
+        )
+        lightgbm_model = fit_lightgbm(
+            transformed_train,
+            config_name=selected_configs["lightgbm"],
+            vector_size=final_preprocessor.manifest.vector_size,
+            fold_name="final_2019_2023",
+        )
 
         validation_baselines = score_baselines(baseline_state, splits.validation)
         evaluation_baselines = score_baselines(baseline_state, splits.evaluation)
@@ -488,8 +475,18 @@ def run_model_training(
                 ),
             ),
             "lightgbm": (
-                _score_model(lightgbm_model, transformed_validation, "lightgbm"),
-                _score_model(lightgbm_model, transformed_evaluation, "lightgbm"),
+                score_lightgbm(
+                    lightgbm_model,
+                    transformed_validation,
+                    comparator="lightgbm",
+                    vector_size=final_preprocessor.manifest.vector_size,
+                ),
+                score_lightgbm(
+                    lightgbm_model,
+                    transformed_evaluation,
+                    comparator="lightgbm",
+                    vector_size=final_preprocessor.manifest.vector_size,
+                ),
             ),
         }
         for comparator, (validation_frame, evaluation_frame) in model_frames.items():
@@ -508,8 +505,17 @@ def run_model_training(
                 state=baseline_states[comparator],
             )
 
+        raw_validation_sample = splits.validation.orderBy(
+            "cod_distrito", "feature_hour"
+        ).limit(32)
+        logged_validation_sample = load_logged_preprocessor(
+            parent_run_id=parent_run_id,
+            raw_validation_sample=raw_validation_sample,
+            manifest=final_preprocessor.manifest,
+        )
+
         logistic_config = selected_configs["logistic_regression"]
-        child_run_ids["logistic_regression"] = log_model_run(
+        child_run_ids["logistic_regression"] = log_spark_model_run(
             parent_run_id=parent_run_id,
             comparator="logistic_regression",
             parameters={"config_name": logistic_config, **LOGISTIC_CONFIGS[logistic_config]},
@@ -520,19 +526,19 @@ def run_model_training(
                 if score.model_name == "logistic_regression"
             ],
             model=logistic_model,
+            validation_sample=logged_validation_sample,
         )
 
         lightgbm_config = selected_configs["lightgbm"]
-        child_run_ids["lightgbm"] = log_model_run(
+        child_run_ids["lightgbm"] = log_lightgbm_run(
             parent_run_id=parent_run_id,
             comparator="lightgbm",
             parameters={
                 "config_name": lightgbm_config,
                 **LIGHTGBM_CONFIGS[lightgbm_config],
-                "seed": 42,
-                "dataRandomSeed": 42,
+                "random_state": 42,
+                "data_random_seed": 42,
                 "objective": "binary",
-                "executionMode": "streaming",
             },
             evaluations=evaluations["lightgbm"],
             backtest=[
@@ -541,20 +547,10 @@ def run_model_training(
                 if score.model_name == "lightgbm"
             ],
             model=lightgbm_model,
+            validation_sample=logged_validation_sample,
+            vector_size=final_preprocessor.manifest.vector_size,
         )
 
-        raw_validation_sample = splits.validation.orderBy(
-            "cod_distrito", "feature_hour"
-        ).limit(32)
-        verify_logged_models(
-            parent_run_id=parent_run_id,
-            model_run_ids={
-                "logistic_regression": child_run_ids["logistic_regression"],
-                "lightgbm": child_run_ids["lightgbm"],
-            },
-            raw_validation_sample=raw_validation_sample,
-            manifest=final_preprocessor.manifest,
-        )
 
     return TrainingResult(
         status=TRAINING_COMPLETE,
