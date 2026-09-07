@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import platform
+import re
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from decimal import Decimal
@@ -64,6 +65,11 @@ BASELINE_COMPARATORS = {
     "district_hour_day": "district_hour_day_frequency",
 }
 
+MLFLOW_DFS_TMP_PATTERN = re.compile(
+    r"^/Volumes/[a-z_][a-z0-9_]*/[a-z_][a-z0-9_]*/"
+    r"[a-z_][a-z0-9_]*(?:/[A-Za-z0-9._-]+)*$"
+)
+
 
 @dataclass(frozen=True)
 class TrainingConfig:
@@ -74,8 +80,17 @@ class TrainingConfig:
     features_delta_version: int
     expected_snapshot_id: str
     mlflow_experiment_id: str
+    mlflow_dfs_tmp: str
     code_commit: str
     package_version: str
+
+    def __post_init__(self) -> None:
+        """Reject paths that serverless MLflow cannot use for Spark artifacts."""
+        if not MLFLOW_DFS_TMP_PATTERN.fullmatch(self.mlflow_dfs_tmp):
+            raise ValueError(
+                "mlflow_dfs_tmp must be a Unity Catalog volume path under "
+                "/Volumes/<catalog>/<schema>/<volume>"
+            )
 
 
 @dataclass(frozen=True)
@@ -437,6 +452,7 @@ def run_model_training(
         tags=tags,
         manifest=asdict(final_preprocessor.manifest),
         preprocessor=final_preprocessor.pipeline_model,
+        dfs_tmpdir=config.mlflow_dfs_tmp,
     ) as parent_run_id:
         logistic_model = _fit_model(
             build_logistic_regression(selected_configs["logistic_regression"]),
@@ -512,6 +528,7 @@ def run_model_training(
             parent_run_id=parent_run_id,
             raw_validation_sample=raw_validation_sample,
             manifest=final_preprocessor.manifest,
+            dfs_tmpdir=config.mlflow_dfs_tmp,
         )
 
         logistic_config = selected_configs["logistic_regression"]
@@ -527,6 +544,7 @@ def run_model_training(
             ],
             model=logistic_model,
             validation_sample=logged_validation_sample,
+            dfs_tmpdir=config.mlflow_dfs_tmp,
         )
 
         lightgbm_config = selected_configs["lightgbm"]

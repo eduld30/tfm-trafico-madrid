@@ -1,10 +1,17 @@
 import math
+from dataclasses import replace
 from datetime import datetime
 
+import pytest
 from pyspark.ml.linalg import Vectors
 
 from madrid_ml.models import LIGHTGBM_VERSION, fit_lightgbm, score_lightgbm
-from madrid_ml.training import BacktestScore, build_temporal_folds, select_config
+from madrid_ml.training import (
+    BacktestScore,
+    TrainingConfig,
+    build_temporal_folds,
+    select_config,
+)
 
 
 def test_temporal_folds_are_expanding_and_non_overlapping(spark):
@@ -68,3 +75,23 @@ def test_native_lightgbm_fits_and_scores_a_spark_frame(spark):
     assert LIGHTGBM_VERSION == "4.6.0"
     assert len(scores) == 4
     assert all(math.isfinite(score) and 0.0 <= score <= 1.0 for score in scores)
+
+
+def test_training_config_requires_a_unity_catalog_volume_path():
+    valid = TrainingConfig(
+        gold_catalog="dev_gold",
+        labels_delta_version=1,
+        features_delta_version=1,
+        expected_snapshot_id="snapshot-id",
+        mlflow_experiment_id="123",
+        mlflow_dfs_tmp="/Volumes/dev_gold/ml/mlflow_tmp/model-training",
+        code_commit="abc123",
+        package_version="0.1.0",
+    )
+
+    assert valid.mlflow_dfs_tmp == (
+        "/Volumes/dev_gold/ml/mlflow_tmp/model-training"
+    )
+
+    with pytest.raises(ValueError, match="Unity Catalog volume path"):
+        replace(valid, mlflow_dfs_tmp="/tmp/mlflow")

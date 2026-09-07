@@ -26,6 +26,7 @@ def start_training_run(
     tags: Mapping[str, str],
     manifest: Mapping[str, object],
     preprocessor: PipelineModel,
+    dfs_tmpdir: str,
 ) -> Iterator[str]:
     """Start the parent run and register the final preprocessing artifact."""
     import mlflow
@@ -37,7 +38,11 @@ def start_training_run(
     ) as active_run:
         parent_run_id = active_run.info.run_id
         mlflow.log_dict(dict(manifest), "preprocessing_manifest.json")
-        mlflow.spark.log_model(preprocessor, artifact_path="preprocessor")
+        mlflow.spark.log_model(
+            preprocessor,
+            artifact_path="preprocessor",
+            dfs_tmpdir=dfs_tmpdir,
+        )
         yield parent_run_id
 
 
@@ -105,6 +110,7 @@ def log_spark_model_run(
     backtest: Sequence[Mapping[str, object]],
     model: Model,
     validation_sample: DataFrame,
+    dfs_tmpdir: str,
 ) -> str:
     """Register, reload, and verify one fitted Spark classifier."""
     import mlflow
@@ -119,9 +125,14 @@ def log_spark_model_run(
             evaluations=evaluations,
             backtest=backtest,
         )
-        mlflow.spark.log_model(model, artifact_path="classifier")
+        mlflow.spark.log_model(
+            model,
+            artifact_path="classifier",
+            dfs_tmpdir=dfs_tmpdir,
+        )
         logged_model = mlflow.spark.load_model(
-            f"runs:/{active_run.info.run_id}/classifier"
+            f"runs:/{active_run.info.run_id}/classifier",
+            dfs_tmpdir=dfs_tmpdir,
         )
         _verify_spark_scores(logged_model, validation_sample)
         return active_run.info.run_id
@@ -207,11 +218,15 @@ def load_logged_preprocessor(
     parent_run_id: str,
     raw_validation_sample: DataFrame,
     manifest: PreprocessingManifest,
+    dfs_tmpdir: str,
 ) -> DataFrame:
     """Reload the parent preprocessor and transform the validation sample."""
     import mlflow
 
-    loaded_pipeline = mlflow.spark.load_model(f"runs:/{parent_run_id}/preprocessor")
+    loaded_pipeline = mlflow.spark.load_model(
+        f"runs:/{parent_run_id}/preprocessor",
+        dfs_tmpdir=dfs_tmpdir,
+    )
     if not isinstance(loaded_pipeline, PipelineModel):
         raise RuntimeError("reloaded preprocessor is not a Spark PipelineModel")
     return FittedPreprocessor(

@@ -17,12 +17,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--features-delta-version", required=True, type=int)
     parser.add_argument("--expected-snapshot-id", required=True)
     parser.add_argument("--mlflow-experiment-id", required=True)
+    parser.add_argument("--mlflow-dfs-tmp", required=True)
     parser.add_argument("--code-commit", required=True)
     args = parser.parse_args()
     for name in (
         "gold_catalog",
         "expected_snapshot_id",
         "mlflow_experiment_id",
+        "mlflow_dfs_tmp",
         "code_commit",
     ):
         if not getattr(args, name).strip():
@@ -41,6 +43,7 @@ def main() -> int:
         features_delta_version=args.features_delta_version,
         expected_snapshot_id=args.expected_snapshot_id,
         mlflow_experiment_id=args.mlflow_experiment_id,
+        mlflow_dfs_tmp=args.mlflow_dfs_tmp,
         code_commit=args.code_commit,
         package_version=version("madrid-ingestion"),
     )

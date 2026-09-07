@@ -17,6 +17,8 @@ resources:
           default: ""
         - name: mlflow_experiment_id
           default: ""
+        - name: mlflow_dfs_tmp
+          default: ""
         - name: code_commit
           default: ""
       tasks:
@@ -38,6 +40,8 @@ resources:
               - "{{job.parameters.expected_snapshot_id}}"
               - --mlflow-experiment-id
               - "{{job.parameters.mlflow_experiment_id}}"
+              - --mlflow-dfs-tmp
+              - "{{job.parameters.mlflow_dfs_tmp}}"
               - --code-commit
               - "{{job.parameters.code_commit}}"
       environments:

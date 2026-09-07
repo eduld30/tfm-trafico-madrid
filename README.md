@@ -480,6 +480,14 @@ evaluación distribuida. LightGBM recoge únicamente el split de entrenamiento
 ya transformado en una matriz de 111 atributos y puntúa validación y evaluación
 mediante batches distribuidos, sin recoger esos datasets en el proceso Python.
 
+Los modelos Spark se serializan mediante una ruta temporal de Unity Catalog
+indicada en el parámetro `mlflow_dfs_tmp`. En `dev` se usa el volumen gestionado
+`/Volumes/dev_gold/ml/mlflow_tmp`; MLflow solo lo utiliza como staging para
+guardar y recargar los artefactos Spark.
+`ML_JOB_PARAMS` debe incluir `gold_catalog`, las dos versiones Delta,
+`expected_snapshot_id`, `mlflow_experiment_id`, `mlflow_dfs_tmp` y
+`code_commit`.
+
 El Job tiene un límite duro de 60 minutos, cero reintentos, auto-optimización
 serverless desactivada, cola desactivada y ninguna planificación automática.
 Databricks libera el compute serverless al alcanzar un estado terminal.
