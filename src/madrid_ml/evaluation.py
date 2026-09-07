@@ -76,7 +76,7 @@ def _ranked_score_groups(
         )
         .withColumn(
             "average_precision_contribution",
-            (F.col("group_positives") / F.col("positives"))
+            F.try_divide(F.col("group_positives"), F.col("positives"))
             * (
                 F.col("true_positives")
                 / (F.col("true_positives") + F.col("false_positives"))

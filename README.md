@@ -490,8 +490,10 @@ guardar y recargar los artefactos Spark.
 
 El Job usa el modo serverless `STANDARD`, orientado a coste, con un límite duro
 de 60 minutos, cero reintentos, auto-optimización serverless desactivada, cola
-desactivada y ninguna planificación automática. Databricks libera el compute
-serverless al alcanzar un estado terminal.
+desactivada y ninguna planificación automática. `STANDARD` no limita el número
+de workers: el escalado lo gestiona Databricks. El timeout limita la ejecución,
+no constituye un presupuesto monetario. Tras ejecutar, comprobar el estado
+terminal y la ausencia de runs activos; no se gestiona un clúster clásico.
 
 Desde `bundles/ml`:
 
@@ -505,6 +507,24 @@ La ejecución solo lee Gold mediante versiones Delta explícitas y escribe runs
 y artefactos compactos en MLflow. El preprocessor y la regresión logística usan
 el flavor `mlflow.spark`; LightGBM usa `mlflow.lightgbm`. No escribe Gold o
 Silver y no registra modelos en Model Registry.
+
+Para verificar los límites de ejecución sin repetir el entrenamiento completo,
+el mismo entrypoint admite `--smoke` junto con los argumentos habituales. Ejecuta
+168 filas sintéticas de entrenamiento y 32 de validación; no lee ni escribe Gold.
+Reutiliza preprocessing, los cinco comparadores, scoring distribuido, métricas y
+los loggers MLflow reales. Comprueba igualdad de vectores y predicciones tras
+recargar, seis runs MLflow `FINISHED` y retorno normal hasta imprimir
+`SMOKE_COMPLETE`. Usar un experimento separado para no mezclar métricas
+sintéticas con las de entrenamiento.
+
+El smoke se envía como una única tarea `spark_python_task` con el wheel y entorno
+del bundle, `--smoke` en sus parámetros, timeout de 600 segundos y sin reintentos.
+No ejecutar el comando de entrenamiento anterior para lanzar el smoke.
+El criterio de éxito incluye `SUCCESS` en Jobs, no solo el mensaje del script.
+No prueba el consumo de memoria del dataset completo ni sustituye su validación.
+
+Referencias: [Spark ML en entorno 4](https://learn.microsoft.com/en-us/azure/databricks/release-notes/serverless/environment-version/four)
+y [serverless, modos y reintentos](https://learn.microsoft.com/en-us/azure/databricks/jobs/run-serverless-jobs).
 
 ## XML
 

@@ -19,6 +19,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mlflow-experiment-id", required=True)
     parser.add_argument("--mlflow-dfs-tmp", required=True)
     parser.add_argument("--code-commit", required=True)
+    parser.add_argument("--smoke", action="store_true")
     args = parser.parse_args()
     for name in (
         "gold_catalog",
@@ -47,7 +48,12 @@ def main() -> int:
         code_commit=args.code_commit,
         package_version=version("madrid-ingestion"),
     )
-    result = run_model_training(spark, config)
+    if args.smoke:
+        from madrid_ml.smoke import run_training_smoke
+
+        result = run_training_smoke(spark, config)
+    else:
+        result = run_model_training(spark, config)
     print(json.dumps(asdict(result), sort_keys=True, separators=(",", ":")))
     return 0
 

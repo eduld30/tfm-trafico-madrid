@@ -30,3 +30,21 @@ def test_segment_metrics_keep_single_class_segments_as_not_evaluable(spark):
     assert rows[1].rows == 2 and rows[1].positives == 2
     assert rows[1].average_precision is None and rows[1].roc_auc is None
     assert rows[2].average_precision == pytest.approx(1.0)
+
+
+def test_all_negative_metrics_are_not_evaluable_with_ansi_enabled(spark):
+    previous = spark.conf.get("spark.sql.ansi.enabled")
+    spark.conf.set("spark.sql.ansi.enabled", "true")
+    try:
+        scored = spark.createDataFrame(
+            [(1, 8, 0, 0.2), (1, 8, 0, 0.4)],
+            "cod_distrito int, hora_dia int, target_accident_next_hour int, score double",
+        )
+        metrics = global_binary_metrics(scored)
+        assert metrics["average_precision"] is None
+        assert metrics["roc_auc"] is None
+        assert metrics["brier_score"] == pytest.approx(0.1)
+        segment = segmented_binary_metrics(scored).first()
+        assert segment.average_precision is None and segment.roc_auc is None
+    finally:
+        spark.conf.set("spark.sql.ansi.enabled", previous)
