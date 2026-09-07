@@ -488,9 +488,10 @@ guardar y recargar los artefactos Spark.
 `expected_snapshot_id`, `mlflow_experiment_id`, `mlflow_dfs_tmp` y
 `code_commit`.
 
-El Job tiene un límite duro de 60 minutos, cero reintentos, auto-optimización
-serverless desactivada, cola desactivada y ninguna planificación automática.
-Databricks libera el compute serverless al alcanzar un estado terminal.
+El Job usa el modo serverless `STANDARD`, orientado a coste, con un límite duro
+de 60 minutos, cero reintentos, auto-optimización serverless desactivada, cola
+desactivada y ninguna planificación automática. Databricks libera el compute
+serverless al alcanzar un estado terminal.
 
 Desde `bundles/ml`:
 

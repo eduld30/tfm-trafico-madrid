@@ -3,6 +3,7 @@ resources:
     ml_model_training:
       name: madrid-ml-model-training
       max_concurrent_runs: 1
+      performance_target: STANDARD
       timeout_seconds: 3600
       queue:
         enabled: false
