@@ -522,6 +522,15 @@ del bundle, `--smoke` en sus parámetros, timeout de 600 segundos y sin reintent
 No ejecutar el comando de entrenamiento anterior para lanzar el smoke.
 El criterio de éxito incluye `SUCCESS` en Jobs, no solo el mensaje del script.
 No prueba el consumo de memoria del dataset completo ni sustituye su validación.
+La CLI utilizada ignora `performance_target` en `jobs submit`; el smoke efímero
+puede usar `PERFORMANCE_OPTIMIZED` aunque el Job guardado use `STANDARD`.
+Comprobar `effective_performance_target` en la respuesta de la ejecución.
+
+Evidencia del 7 de septiembre de 2026: run `152286073410750`, revisión
+`2da22aa9be159b11f9755db643c8a0f0cf3a2c0d`, `SUCCESS` en 261,58 segundos,
+attempt 0, salida `SMOKE_COMPLETE`. Parent MLflow:
+`0fdeef78993b4246a636745c3808d264`; parent y cinco hijos `FINISHED`.
+Se verificaron cero runs activos y se eliminó el staging temporal del smoke.
 
 Referencias: [Spark ML en entorno 4](https://learn.microsoft.com/en-us/azure/databricks/release-notes/serverless/environment-version/four)
 y [serverless, modos y reintentos](https://learn.microsoft.com/en-us/azure/databricks/jobs/run-serverless-jobs).
