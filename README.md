@@ -535,6 +535,33 @@ Se verificaron cero runs activos y se eliminó el staging temporal del smoke.
 Referencias: [Spark ML en entorno 4](https://learn.microsoft.com/en-us/azure/databricks/release-notes/serverless/environment-version/four)
 y [serverless, modos y reintentos](https://learn.microsoft.com/en-us/azure/databricks/jobs/run-serverless-jobs).
 
+### Informe de evaluación sin reentrenamiento
+
+[`notebooks/evaluacion_modelos_ml.py`](notebooks/evaluacion_modelos_ml.py) es un
+notebook Databricks en español para interpretar el experimento del TFM. El widget
+`parent_run_id` fija el entrenamiento que se analiza; por defecto utiliza
+`d7e8a05135dd4880b9ec15b4cac658ee`, con comparación en 2024 y evaluación en 2025.
+Se ejecuta en serverless, entorno 4, con acceso de lectura a ese experimento MLflow.
+No requiere el wheel del proyecto ni dependencias adicionales al entorno.
+
+Incluye comparación AP/ROC AUC/Brier y mejoras frente a baselines, curvas
+precisión–recall, escenarios de umbral en 2024, calibración con soporte por
+intervalo, mapas distrito–hora y backtesting temporal. Las conclusiones distinguen
+mejora descriptiva de significación estadística y utilidad operacional. No
+promedia AP/AUC de segmentos ni recalcula AP desde las curvas reducidas.
+
+Solo descarga `preprocessing_manifest.json`, `evaluation.json` y `backtest.json`.
+No carga modelos, genera predicciones, consulta Gold/Silver ni crea runs MLflow.
+Los JSON temporales se eliminan tras su lectura. La maquinaria de despliegue y
+las evidencias locales están en `.team-workspace/model_evaluation_deployment/`.
+
+Ejecución verificada: run `193797848807508`, serverless, `SUCCESS` en 39,09
+segundos, intento 0 y salida `MODEL_EVALUATION_REPORT_COMPLETE`. El notebook
+permanece en `/Workspace/Users/pedpenaf@ucm.es/madrid-ml/evaluacion_modelos_ml`.
+El HTML exportado conserva código, texto y resultados. Databricks puede devolver
+inicialmente salidas en estado `WRITING_TO_DBFS`: basta repetir **la exportación**,
+no la ejecución, cuando termine de persistirlas.
+
 ## XML
 
 El tráfico NRT usa Auto Loader con `cloudFiles.format=xml`. El lector traduce
