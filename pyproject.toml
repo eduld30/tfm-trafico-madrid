@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "madrid-ingestion"
 version = "0.2.0"
-description = "Motor Medallion Bronze/Silver para datos abiertos de Madrid"
+description = "Arquitectura Medallion y ML para datos abiertos de Madrid"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

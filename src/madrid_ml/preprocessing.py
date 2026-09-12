@@ -154,8 +154,17 @@ def _count_matching(condition: Column, alias: str) -> Column:
     ).cast("long").alias(alias)
 
 
-def validate_feature_domains(df: DataFrame) -> None:
-    """Fail once with every invalid categorical, target, count, or coherence gate."""
+def _validate_feature_domains(df: DataFrame, *, require_target: bool) -> None:
+    """Fail once with every invalid categorical, count, and coherence gate."""
+    required = set(NUMERIC_FEATURES + CATEGORY_FEATURES)
+    if require_target:
+        required.add("target_accident_next_hour")
+    missing = sorted(required.difference(df.columns))
+    if missing:
+        raise PreprocessingContractError(
+            "Gold feature domain validation is missing columns: " + ", ".join(missing)
+        )
+
     counters: list[Column] = []
 
     category_domains = {
@@ -163,8 +172,9 @@ def validate_feature_domains(df: DataFrame) -> None:
         "hora_dia": (0, 23),
         "dia_semana": (1, 7),
         "mes": (1, 12),
-        "target_accident_next_hour": (0, 1),
     }
+    if require_target:
+        category_domains["target_accident_next_hour"] = (0, 1)
     for name, (minimum, maximum) in category_domains.items():
         invalid = F.col(name).isNull() | ~F.col(name).between(minimum, maximum)
         counters.append(_count_matching(invalid, f"invalid__{name}"))
@@ -197,6 +207,16 @@ def validate_feature_domains(df: DataFrame) -> None:
         raise PreprocessingContractError(
             "Gold feature domain validation failed: " + ", ".join(failures)
         )
+
+
+def validate_feature_domains(df: DataFrame) -> None:
+    """Validate the complete training feature and target contract."""
+    _validate_feature_domains(df, require_target=True)
+
+
+def validate_inference_feature_domains(df: DataFrame) -> None:
+    """Validate model inputs without requiring an unavailable future target."""
+    _validate_feature_domains(df, require_target=False)
 
 
 def profile_feature_quality(
@@ -557,6 +577,22 @@ class FittedPreprocessor:
         return transformed
 
 
+def transform_inference_features(
+    pipeline_model: PipelineModel,
+    df: DataFrame,
+) -> DataFrame:
+    """Apply the fitted training pipeline to an unlabeled inference snapshot."""
+    validate_inference_feature_domains(df)
+    transformed = pipeline_model.transform(_prepare_for_pipeline(df))
+    _validate_transformed_features(
+        df,
+        transformed,
+        identity=("cod_distrito", "feature_hour"),
+        label="inference",
+    )
+    return transformed
+
+
 @dataclass(frozen=True)
 class PreparedTrainingData:
     """Three transformed model splits and their fitted preprocessing artifact."""
@@ -783,15 +819,29 @@ def _validate_transformed_split(
     transformed: DataFrame,
     split_name: str,
 ) -> None:
+    _validate_transformed_features(
+        source,
+        transformed,
+        identity=("cod_distrito", "feature_hour", "target_accident_next_hour"),
+        label=split_name,
+    )
+
+
+def _validate_transformed_features(
+    source: DataFrame,
+    transformed: DataFrame,
+    *,
+    identity: tuple[str, ...],
+    label: str,
+) -> None:
     source_count = source.count()
     transformed_count = transformed.count()
     if transformed_count != source_count:
         raise PreprocessingContractError(
-            f"{split_name}: row count changed during transform; "
+            f"{label}: row count changed during transform; "
             f"before={source_count}, after={transformed_count}"
         )
 
-    identity = ("cod_distrito", "feature_hour", "target_accident_next_hour")
     missing_identity = (
         source.select(*identity)
         .exceptAll(transformed.select(*identity))
@@ -806,7 +856,7 @@ def _validate_transformed_split(
     )
     if missing_identity or extra_identity:
         raise PreprocessingContractError(
-            f"{split_name}: keys or labels changed during transform"
+            f"{label}: identity columns changed during transform"
         )
 
     values = vector_to_array(F.col(MODEL_FEATURES_COLUMN))
@@ -829,12 +879,12 @@ def _validate_transformed_split(
         or summary.maximum_size != EXPECTED_VECTOR_SIZE
     ):
         raise PreprocessingContractError(
-            f"{split_name}: feature vector size differs from {EXPECTED_VECTOR_SIZE}; "
+            f"{label}: feature vector size differs from {EXPECTED_VECTOR_SIZE}; "
             f"minimum={summary.minimum_size}, maximum={summary.maximum_size}"
         )
     if summary.invalid_vectors:
         raise PreprocessingContractError(
-            f"{split_name}: found {summary.invalid_vectors} non-finite feature vectors"
+            f"{label}: found {summary.invalid_vectors} non-finite feature vectors"
         )
 
 

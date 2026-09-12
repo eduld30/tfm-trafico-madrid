@@ -86,6 +86,15 @@ class SnapshotResult:
     features_lineage: dict[str, str]
 
 
+@dataclass(frozen=True)
+class SnapshotReference:
+    """Delta versions and lineage of the latest published ML snapshot."""
+
+    snapshot_id: str
+    labels_delta_version: int
+    features_delta_version: int
+
+
 def canonical_versions_json(versions: Mapping[str, int]) -> str:
     """Serialize pinned Delta versions in their canonical lineage representation."""
     return json.dumps(dict(versions), sort_keys=True, separators=(",", ":"))
@@ -104,6 +113,53 @@ def validate_expected_versions(
             f"expected={canonical_versions_json(expected_versions)}, "
             f"captured={canonical_versions_json(captured_versions)}"
         )
+
+
+def capture_silver_versions(
+    spark: SparkSession,
+    silver_catalog: str,
+) -> dict[str, int]:
+    """Capture the current Delta version of every Silver snapshot input."""
+    return _capture_table_versions(spark, _input_table_names(silver_catalog))
+
+
+def latest_snapshot_reference(
+    spark: SparkSession,
+    gold_catalog: str,
+) -> SnapshotReference:
+    """Resolve the latest coherent labels/features snapshot from Gold."""
+    labels_table, features_table = _gold_table_names(gold_catalog)
+    labels_version = int(
+        spark.sql(f"DESCRIBE HISTORY {labels_table}").select("version").first()[0]
+    )
+    features_version = int(
+        spark.sql(f"DESCRIBE HISTORY {features_table}").select("version").first()[0]
+    )
+    labels = (
+        spark.read.option("versionAsOf", labels_version)
+        .table(labels_table)
+        .select("snapshot_id")
+        .distinct()
+        .collect()
+    )
+    features = (
+        spark.read.option("versionAsOf", features_version)
+        .table(features_table)
+        .select("snapshot_id")
+        .distinct()
+        .collect()
+    )
+    label_ids = {row[0] for row in labels if row[0]}
+    feature_ids = {row[0] for row in features if row[0]}
+    if len(label_ids) != 1 or label_ids != feature_ids:
+        raise SnapshotContractError(
+            "latest Gold ML tables do not contain one coherent snapshot_id"
+        )
+    return SnapshotReference(
+        snapshot_id=next(iter(label_ids)),
+        labels_delta_version=labels_version,
+        features_delta_version=features_version,
+    )
 
 
 def validate_unique_key(df: DataFrame, key_columns: Sequence[str]) -> int:
@@ -205,6 +261,14 @@ def _input_table_names(silver_catalog: str) -> dict[str, str]:
         role: _validated_table_name(catalog, suffix)
         for role, suffix in INPUT_SUFFIXES.items()
     }
+
+
+def _gold_table_names(gold_catalog: str) -> tuple[str, str]:
+    catalog = _validate_identifier(gold_catalog, "gold catalog")
+    return (
+        _validated_table_name(catalog, f"{ML_SCHEMA}.{LABEL_TABLE}"),
+        _validated_table_name(catalog, f"{ML_SCHEMA}.{FEATURE_TABLE}"),
+    )
 
 
 def _capture_table_versions(

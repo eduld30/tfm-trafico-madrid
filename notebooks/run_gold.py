@@ -1,7 +1,7 @@
 # Databricks notebook source
 # /// script
 # [tool.databricks.environment]
-# environment_version = "5"
+# environment_version = "4"
 # ///
 # MAGIC %md
 # MAGIC # Ejecutar capa Gold
@@ -20,45 +20,38 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install pydantic
-
-# COMMAND ----------
-
 # Widgets
 try:
-    dbutils.widgets.text("environment", "dev", "Entorno")
+    dbutils.widgets.text("environment", "", "Entorno")
     dbutils.widgets.text(
-        "repo_root",
-        "/Workspace/Users/carloaca@ucm.es/tfm-trafico-madrid",
-        "Raíz del repositorio",
+        "config_root",
+        "",
+        "Directorio de configuración",
     )
     dbutils.widgets.text("gold_schema", "movilidad", "Esquema Gold")
-    dbutils.widgets.dropdown(
-        "write_mode", "overwrite", ["overwrite"], "Modo de escritura"
-    )
-    ENVIRONMENT = dbutils.widgets.get("environment")
-    REPO_ROOT = dbutils.widgets.get("repo_root")
-    GOLD_SCHEMA = dbutils.widgets.get("gold_schema")
-    WRITE_MODE = dbutils.widgets.get("write_mode")
+    ENVIRONMENT = dbutils.widgets.get("environment").strip()
+    CONFIG_ROOT = dbutils.widgets.get("config_root").strip()
+    GOLD_SCHEMA = dbutils.widgets.get("gold_schema").strip()
+    WRITE_MODE = "overwrite"
 except Exception:
-    ENVIRONMENT = "dev"
-    REPO_ROOT = "/Workspace/Users/carloaca@ucm.es/tfm-trafico-madrid"
+    ENVIRONMENT = ""
+    CONFIG_ROOT = "conf"
     GOLD_SCHEMA = "movilidad"
     WRITE_MODE = "overwrite"
 
+if not ENVIRONMENT or not CONFIG_ROOT or not GOLD_SCHEMA:
+    raise ValueError("environment, config_root y gold_schema son obligatorios")
+
 # COMMAND ----------
 
-import sys
 from functools import reduce
 from typing import Iterable
 
 from pyspark.sql import DataFrame, Window
 from pyspark.sql import functions as F
 
-sys.path.append(f"{REPO_ROOT}/src")
 from madrid_ingestion.config.loader import ConfigLoader
 
-CONFIG_ROOT = f"{REPO_ROOT}/conf/"
 ENV_CONFIG = ConfigLoader(CONFIG_ROOT).load_environment(ENVIRONMENT)
 SILVER_CATALOG = ENV_CONFIG.catalogs.silver
 GOLD_CATALOG = ENV_CONFIG.catalogs.gold
@@ -78,7 +71,6 @@ print(f"Gold: {GOLD_DATABASE}")
 # COMMAND ----------
 
 results: dict[str, str] = {}
-frames: dict[str, DataFrame] = {}
 
 
 def silver_table(source: str, dataset: str) -> str:
@@ -91,6 +83,16 @@ def gold_table(name: str) -> str:
 
 def table_exists(name: str) -> bool:
     return bool(spark.catalog.tableExists(name))
+
+
+def read_gold(name: str, required: bool = True) -> DataFrame | None:
+    """Read a persisted Gold table instead of retaining an upstream DataFrame."""
+    table_name = gold_table(name)
+    if not table_exists(table_name):
+        if required:
+            raise RuntimeError(f"no existe {table_name}")
+        return None
+    return spark.table(table_name)
 
 
 def read_silver(
@@ -255,7 +257,6 @@ try:
         col_or_null(district, "area", "double").alias("area"),
     ).where(F.col("cod_distrito").isNotNull()).dropDuplicates(["cod_distrito"])
     write_gold(gold_dim_distrito, "gold_dim_distrito")
-    frames["dim_distrito"] = gold_dim_distrito
     mark("gold_dim_distrito", "OK")
 except Exception as exc:
     mark("gold_dim_distrito", f"FALLO: {exc}")
@@ -277,7 +278,6 @@ try:
         col_or_null(traffic_dim, "latitud", "double").alias("latitud"),
     ).where(F.col("id_punto").isNotNull()).dropDuplicates(["id_punto"])
     write_gold(gold_dim_trafico, "gold_dim_trafico")
-    frames["dim_trafico"] = gold_dim_trafico
     mark("gold_dim_trafico", "OK")
 except Exception as exc:
     mark("gold_dim_trafico", f"FALLO: {exc}")
@@ -298,7 +298,6 @@ try:
         col_or_null(meteo_dim, "distrito_nombre", "string").alias("distrito_nombre"),
     ).where(F.col("estacion").isNotNull()).dropDuplicates(["estacion"])
     write_gold(gold_dim_meteo, "gold_dim_meteo")
-    frames["dim_meteo"] = gold_dim_meteo
     mark("gold_dim_meteo", "OK")
 except Exception as exc:
     mark("gold_dim_meteo", f"FALLO: {exc}")
@@ -321,7 +320,6 @@ try:
         col_or_null(calair_dim, "distrito_nombre", "string").alias("distrito_nombre"),
     ).where(F.col("estacion").isNotNull()).dropDuplicates(["estacion"])
     write_gold(gold_dim_calair, "gold_dim_calair")
-    frames["dim_calair"] = gold_dim_calair
     mark("gold_dim_calair", "OK")
 except Exception as exc:
     mark("gold_dim_calair", f"FALLO: {exc}")
@@ -338,7 +336,6 @@ try:
         col_or_null(meteo_mag, "tecnica_de_medida", "string").alias("tecnica_de_medida"),
     ).dropDuplicates(["codigo_magnitud"])
     write_gold(gold_meteo_mag, "gold_dim_meteo_magnitud")
-    frames["dim_meteo_mag"] = gold_meteo_mag
     mark("gold_dim_meteo_magnitud", "OK")
 except Exception as exc:
     mark("gold_dim_meteo_magnitud", f"FALLO: {exc}")
@@ -357,7 +354,6 @@ try:
         col_or_null(calair_mag, "tecnica_de_medida", "string").alias("tecnica_de_medida"),
     ).dropDuplicates(["codigo_magnitud"])
     write_gold(gold_calair_mag, "gold_dim_calair_magnitud")
-    frames["dim_calair_mag"] = gold_calair_mag
     mark("gold_dim_calair_magnitud", "OK")
 except Exception as exc:
     mark("gold_dim_calair_magnitud", f"FALLO: {exc}")
@@ -382,7 +378,6 @@ try:
         .otherwise(5),
     )
     write_gold(dim_hora, "gold_dim_hora")
-    frames["dim_hora"] = dim_hora
     mark("gold_dim_hora", "OK")
 except Exception as exc:
     mark("gold_dim_hora", f"FALLO: {exc}")
@@ -408,7 +403,6 @@ try:
         F.dayofweek("fecha").isin([1, 7]).alias("es_fin_de_semana"),
     )
     write_gold(dim_fecha, "gold_dim_fecha")
-    frames["dim_fecha"] = dim_fecha
     mark("gold_dim_fecha", "OK")
 except Exception as exc:
     mark("gold_dim_fecha", f"FALLO: {exc}")
@@ -457,7 +451,6 @@ try:
         .otherwise("Sin asistencia / desconocido"),
     )
     write_gold(gold_accidente, "gold_accidente", ["anio"])
-    frames["accidente"] = gold_accidente
     mark("gold_accidente", "OK")
 except Exception as exc:
     mark("gold_accidente", f"FALLO: {exc}")
@@ -466,7 +459,7 @@ except Exception as exc:
 # COMMAND ----------
 
 try:
-    a = frames["accidente"]
+    a = read_gold("gold_accidente")
     acc_agg = a.groupBy("cod_distrito", "distrito_nombre", "timestamp_hora", "fecha", "hora", "anio", "mes").agg(
         F.countDistinct("num_expediente").alias("n_accidentes"),
         F.sum(F.when(F.col("n_personas_lesionadas") > 0, 1).otherwise(0)).alias("n_accidentes_lesivos"),
@@ -484,7 +477,6 @@ try:
     acc_dh = calendar.join(acc_agg, ["cod_distrito", "distrito_nombre", "timestamp_hora", "fecha", "hora", "anio", "mes"], "left").fillna(0, numeric)
     acc_dh = add_time_labels(acc_dh)
     write_gold(acc_dh, "gold_accidentes_distrito_hora", ["anio"])
-    frames["acc_dh"] = acc_dh
     mark("gold_accidentes_distrito_hora", "OK")
 except Exception as exc:
     mark("gold_accidentes_distrito_hora", f"FALLO: {exc}")
@@ -512,7 +504,7 @@ try:
         d = normalize_district(normalize_time(df))
         # Si la fuente tiene distrito pero no nombre, se completa con dim_distritos.
         if has(d, "cod_distrito"):
-            district_lookup = frames["dim_distrito"].select("cod_distrito", "distrito_nombre").dropDuplicates(["cod_distrito"])
+            district_lookup = read_gold("gold_dim_distrito").select("cod_distrito", "distrito_nombre").dropDuplicates(["cod_distrito"])
             d = d.drop("distrito_nombre").join(district_lookup, "cod_distrito", "left") if has(d, "distrito_nombre") else d.join(district_lookup, "cod_distrito", "left")
         parts.append(d.select(
             first_value(d, ["id", "idelem"], "long").alias("id_punto"),
@@ -534,8 +526,7 @@ try:
         F.first("periodo_integracion", ignorenulls=True).alias("periodo_integracion"),
     ).withColumn("porcentaje_registros_validos", F.col("n_observaciones_validas") / F.col("n_observaciones"))
     write_gold(traffic_point, "gold_trafico_punto_hora", ["anio"])
-    frames["traffic_point"] = traffic_point
-    traffic_district = traffic_point.groupBy("cod_distrito", "distrito_nombre", "timestamp_hora", "fecha", "hora", "anio", "mes").agg(
+    traffic_district = read_gold("gold_trafico_punto_hora").groupBy("cod_distrito", "distrito_nombre", "timestamp_hora", "fecha", "hora", "anio", "mes").agg(
         F.countDistinct("id_punto").alias("n_puntos_medida"), F.avg("intensidad_media").alias("intensidad_media"), F.max("intensidad_maxima").alias("intensidad_maxima"),
         F.avg("intensidad_saturada_media").alias("intensidad_saturada_media"), F.avg("ocupacion_media").alias("ocupacion_media"), F.max("ocupacion_maxima").alias("ocupacion_maxima"),
         F.avg("carga_media").alias("carga_media"), F.avg("velocidad_media").alias("velocidad_media"), F.max("nivel_servicio_maximo").alias("nivel_servicio_maximo"),
@@ -543,7 +534,6 @@ try:
     ).withColumn("porcentaje_registros_validos", F.col("n_observaciones_validas") / F.col("n_observaciones_trafico")).withColumn("nivel_congestion", F.lit(None).cast("string"))
     traffic_district = add_time_labels(traffic_district)
     write_gold(traffic_district, "gold_trafico_distrito_hora", ["anio"])
-    frames["traffic_district"] = traffic_district
     mark("gold_trafico_punto_hora", "OK")
     mark("gold_trafico_distrito_hora", "OK")
 except Exception as exc:
@@ -568,7 +558,7 @@ def build_environment(
     station_dim: DataFrame,
     magnitude_dim: DataFrame,
     output_name: str,
-) -> DataFrame | None:
+) -> bool:
     parts = []
     for key in keys:
         df = silver.get(key)
@@ -582,7 +572,7 @@ def build_environment(
         d = d.withColumn("validez", col_or_null(d, "validez", "string"))
         parts.append(d.select("estacion", "codigo_magnitud", "valor", "validez", "timestamp_hora", "fecha", "hora", "anio", "mes", "cod_distrito", "distrito_nombre"))
     if not parts:
-        return None
+        return False
     data = union_all(parts)
     station = station_dim.select("estacion", "cod_distrito", "distrito_nombre", "latitud", "longitud").dropDuplicates(["estacion"])
     data = data.drop("cod_distrito", "distrito_nombre").join(station, "estacion", "left")
@@ -594,15 +584,29 @@ def build_environment(
     )
     result = add_time_labels(result)
     write_gold(result, output_name, ["anio"])
-    return result
+    return True
 
-meteo = build_environment("meteo", ["meteo_historico", "meteo_nrt"], frames["dim_meteo"], frames["dim_meteo_mag"], "gold_meteo_distrito_hora")
-calair = build_environment("calair", ["calair_historico", "calair_nrt"], frames["dim_calair"], frames["dim_calair_mag"], "gold_calair_distrito_hora")
-for key, name, value in [("meteo", "gold_meteo_distrito_hora", meteo), ("calair", "gold_calair_distrito_hora", calair)]:
-    if value is None:
+meteo = build_environment(
+    "meteo",
+    ["meteo_historico", "meteo_nrt"],
+    read_gold("gold_dim_meteo"),
+    read_gold("gold_dim_meteo_magnitud"),
+    "gold_meteo_distrito_hora",
+)
+calair = build_environment(
+    "calair",
+    ["calair_historico", "calair_nrt"],
+    read_gold("gold_dim_calair"),
+    read_gold("gold_dim_calair_magnitud"),
+    "gold_calair_distrito_hora",
+)
+for name, value in [
+    ("gold_meteo_distrito_hora", meteo),
+    ("gold_calair_distrito_hora", calair),
+]:
+    if not value:
         mark(name, "SALTADO: sin fuente Silver")
     else:
-        frames[key] = value
         mark(name, "OK")
 
 # COMMAND ----------
@@ -621,7 +625,6 @@ try:
         event_dh = events.where(F.col("timestamp_hora").isNotNull()).groupBy("cod_distrito", "distrito_nombre", "timestamp_hora", "fecha", "hora", "anio", "mes").agg(F.count("*").alias("n_eventos"))
         event_dh = add_time_labels(event_dh)
         write_gold(event_dh, "gold_eventos_distrito_hora", ["anio"])
-        frames["events"] = event_dh
         mark("gold_eventos_distrito_hora", "OK")
 except Exception as exc:
     mark("gold_eventos_distrito_hora", f"FALLO: {exc}")
@@ -635,8 +638,9 @@ except Exception as exc:
 # COMMAND ----------
 
 try:
-    a = frames["acc_dh"].alias("a")
-    t = frames["traffic_district"].alias("t")
+    _sentinel = F.lit(-1).cast("long")
+    a = read_gold("gold_accidentes_distrito_hora").withColumn("cod_distrito", F.coalesce(F.col("cod_distrito"), _sentinel)).alias("a")
+    t = read_gold("gold_trafico_distrito_hora").withColumn("cod_distrito", F.coalesce(F.col("cod_distrito"), _sentinel)).alias("t")
     mobility = a.join(t, ["cod_distrito", "timestamp_hora"], "full").select(
         F.coalesce(F.col("a.cod_distrito"), F.col("t.cod_distrito")).alias("cod_distrito"),
         F.coalesce(F.col("a.distrito_nombre"), F.col("t.distrito_nombre")).alias("distrito_nombre"),
@@ -647,63 +651,30 @@ try:
         F.when(F.col("a.cod_distrito").isNotNull(), 1).otherwise(0).alias("hay_datos_accidentes"),
         F.when(F.col("t.cod_distrito").isNotNull(), 1).otherwise(0).alias("hay_datos_trafico"),
     )
-    for key in ["meteo", "calair"]:
-        if key in frames:
-            env = frames[key]
+    import unicodedata as _ud, re as _re
+    def _safe_col(n):
+        n = _ud.normalize('NFKD', n).encode('ascii', 'ignore').decode('ascii')
+        return _re.sub(r'_+', '_', _re.sub(r'[^a-zA-Z0-9_]', '_', n)).strip('_').lower()
+    for output_name, published in [
+        ("gold_meteo_distrito_hora", meteo),
+        ("gold_calair_distrito_hora", calair),
+    ]:
+        if published:
+            env = read_gold(output_name)
             pivot_cols = [x for x in ["magnitud", "abreviatura", "parametro"] if x in env.columns]
             pivot_col = pivot_cols[0] if pivot_cols else "codigo_magnitud"
             env_wide = env.groupBy("cod_distrito", "timestamp_hora").pivot(pivot_col).agg(F.first("valor"))
+            env_wide = env_wide.toDF(*[_safe_col(c) if c not in ("cod_distrito", "timestamp_hora") else c for c in env_wide.columns])
             mobility = mobility.join(env_wide, ["cod_distrito", "timestamp_hora"], "left")
-    if "events" in frames:
-        mobility = mobility.join(frames["events"].select("cod_distrito", "timestamp_hora", "n_eventos"), ["cod_distrito", "timestamp_hora"], "left")
+    if results.get("gold_eventos_distrito_hora") == "OK":
+        events = read_gold("gold_eventos_distrito_hora")
+        mobility = mobility.join(events.select("cod_distrito", "timestamp_hora", "n_eventos"), ["cod_distrito", "timestamp_hora"], "left")
     mobility = mobility.withColumn("n_eventos", F.coalesce(F.col("n_eventos"), F.lit(0))) if has(mobility, "n_eventos") else mobility.withColumn("n_eventos", F.lit(0).cast("long"))
+    mobility = mobility.withColumn("cod_distrito",
+        F.when(F.col("cod_distrito") == -1, F.lit(None).cast("long")).otherwise(F.col("cod_distrito")))
     mobility = add_time_labels(mobility)
     write_gold(mobility, "gold_movilidad_distrito_hora", ["anio"])
-    frames["mobility"] = mobility
     mark("gold_movilidad_distrito_hora", "OK")
 except Exception as exc:
     mark("gold_movilidad_distrito_hora", f"FALLO: {exc}")
     raise
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 8. Validaciones de la capa Gold
-
-# COMMAND ----------
-
-try:
-    checks = {
-        "gold_accidente expediente único": frames["accidente"].groupBy("num_expediente").count().where("count > 1").limit(1).count(),
-        "gold_accidentes_distrito_hora única": frames["acc_dh"].groupBy("cod_distrito", "timestamp_hora").count().where("count > 1").limit(1).count(),
-        "gold_trafico_punto_hora única": frames["traffic_point"].groupBy("id_punto", "timestamp_hora").count().where("count > 1").limit(1).count(),
-        "gold_trafico_distrito_hora única": frames["traffic_district"].groupBy("cod_distrito", "timestamp_hora").count().where("count > 1").limit(1).count(),
-        "gold_movilidad_distrito_hora única": frames["mobility"].groupBy("cod_distrito", "timestamp_hora").count().where("count > 1").limit(1).count(),
-    }
-    detail_count = frames["accidente"].select("num_expediente").distinct().count()
-    aggregate_count = frames["acc_dh"].select(F.sum("n_accidentes")).first()[0]
-    if detail_count != aggregate_count:
-        raise RuntimeError(f"Total accidentes inconsistente: {detail_count} != {aggregate_count}")
-    invalid = {name: value for name, value in checks.items() if value != 0}
-    if invalid:
-        raise RuntimeError(f"Claves Gold duplicadas: {invalid}")
-    mark("validaciones_gold", "OK")
-except Exception as exc:
-    mark("validaciones_gold", f"FALLO: {exc}")
-    raise
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 9. Resumen
-
-# COMMAND ----------
-
-for name, status in results.items():
-    print(f"{name}: {status}")
-
-failed = {name: status for name, status in results.items() if status.startswith("FALLO")}
-if failed:
-    raise RuntimeError(f"Fallaron {len(failed)} salidas Gold: {failed}")
-
-print("Ejecución Gold finalizada correctamente")

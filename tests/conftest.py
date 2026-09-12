@@ -9,7 +9,8 @@ from pyspark.sql import SparkSession
 def spark():
     previous_timezone = os.environ.get("TZ")
     os.environ["TZ"] = "Etc/UTC"
-    time.tzset()
+    if hasattr(time, "tzset"):
+        time.tzset()
     session = None
     try:
         session = (
@@ -27,4 +28,5 @@ def spark():
             os.environ.pop("TZ", None)
         else:
             os.environ["TZ"] = previous_timezone
-        time.tzset()
+        if hasattr(time, "tzset"):
+            time.tzset()

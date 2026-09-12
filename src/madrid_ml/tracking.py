@@ -4,18 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from typing import TYPE_CHECKING
 
 from pyspark.ml import Model, PipelineModel
 from pyspark.ml.functions import vector_to_array
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
-from madrid_ml.models import collect_lightgbm_features
 from madrid_ml.preprocessing import FittedPreprocessor, PreprocessingManifest
-
-if TYPE_CHECKING:
-    from lightgbm import LGBMClassifier
 
 
 @contextmanager
@@ -78,31 +73,6 @@ def _log_model_metadata(
     mlflow.log_dict({"folds": list(backtest)}, "backtest.json")
 
 
-def log_baseline_run(
-    *,
-    parent_run_id: str,
-    experiment_id: str,
-    comparator: str,
-    parameters: Mapping[str, object],
-    evaluations: Mapping[str, object],
-    state: Mapping[str, object],
-) -> str:
-    """Register one historical baseline as a child run."""
-    import mlflow
-
-    with mlflow.start_run(
-        experiment_id=experiment_id,
-        run_name=comparator,
-        nested=True,
-        tags={"mlflow.parentRunId": parent_run_id, "madrid_ml.comparator": comparator},
-    ) as active_run:
-        mlflow.log_params(dict(parameters))
-        _log_global_metrics(evaluations)
-        mlflow.log_dict(dict(evaluations), "evaluation.json")
-        mlflow.log_dict(dict(state), "baseline_state.json")
-        return active_run.info.run_id
-
-
 def log_spark_model_run(
     *,
     experiment_id: str,
@@ -129,54 +99,21 @@ def log_spark_model_run(
             evaluations=evaluations,
             backtest=backtest,
         )
+        signature = mlflow.models.infer_signature(
+            validation_sample.select("features"),
+            model.transform(validation_sample).select("prediction"),
+        )
         mlflow.spark.log_model(
             model,
             artifact_path="classifier",
             dfs_tmpdir=dfs_tmpdir,
+            signature=signature,
         )
         logged_model = mlflow.spark.load_model(
             f"runs:/{active_run.info.run_id}/classifier",
             dfs_tmpdir=dfs_tmpdir,
         )
         _verify_spark_scores(logged_model, validation_sample)
-        return active_run.info.run_id
-
-
-def log_lightgbm_run(
-    *,
-    experiment_id: str,
-    parent_run_id: str,
-    comparator: str,
-    parameters: Mapping[str, object],
-    evaluations: Mapping[str, object],
-    backtest: Sequence[Mapping[str, object]],
-    model: LGBMClassifier,
-    validation_sample: DataFrame,
-    vector_size: int,
-) -> str:
-    """Register, reload, and verify one fitted native LightGBM classifier."""
-    import mlflow
-
-    with mlflow.start_run(
-        experiment_id=experiment_id,
-        run_name=comparator,
-        nested=True,
-        tags={"mlflow.parentRunId": parent_run_id, "madrid_ml.comparator": comparator},
-    ) as active_run:
-        _log_model_metadata(
-            parameters=parameters,
-            evaluations=evaluations,
-            backtest=backtest,
-        )
-        mlflow.lightgbm.log_model(model, artifact_path="classifier")
-        logged_model = mlflow.lightgbm.load_model(
-            f"runs:/{active_run.info.run_id}/classifier"
-        )
-        _verify_lightgbm_scores(
-            logged_model,
-            validation_sample,
-            vector_size=vector_size,
-        )
         return active_run.info.run_id
 
 
@@ -198,24 +135,6 @@ def _verify_spark_scores(model: Model, prepared_sample: DataFrame) -> None:
         raise RuntimeError(
             "reloaded logistic_regression produced invalid validation scores: "
             f"rows={summary.rows}, invalid_scores={summary.invalid_scores}"
-        )
-
-
-def _verify_lightgbm_scores(
-    model: LGBMClassifier,
-    prepared_sample: DataFrame,
-    *,
-    vector_size: int,
-) -> None:
-    import numpy as np
-
-    features = collect_lightgbm_features(prepared_sample, vector_size=vector_size)
-    scores = np.asarray(model.predict_proba(features)[:, 1], dtype=np.float64)
-    invalid_scores = int((~np.isfinite(scores) | (scores < 0.0) | (scores > 1.0)).sum())
-    if scores.shape != (32,) or invalid_scores:
-        raise RuntimeError(
-            "reloaded lightgbm produced invalid validation scores: "
-            f"rows={scores.size}, invalid_scores={invalid_scores}"
         )
 
 

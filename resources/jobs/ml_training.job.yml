@@ -1,0 +1,46 @@
+resources:
+  jobs:
+    ml_model_training:
+      name: madrid-ml-model-training
+      description: "Entrenamiento y evaluación del modelo de riesgo"
+      max_concurrent_runs: 1
+      performance_target: STANDARD
+      timeout_seconds: 3600
+      queue:
+        enabled: false
+      parameters:
+        - name: environment
+          default: ${var.environment}
+        - name: config_root
+          default: ${workspace.file_path}/conf
+        - name: snapshot_id
+          default: ""
+        - name: mlflow_experiment_name
+          default: /Shared/madrid-ml-${var.environment}
+        - name: code_commit
+          default: ""
+      tasks:
+        - task_key: train_and_evaluate
+          environment_key: default
+          disable_auto_optimization: true
+          max_retries: 0
+          retry_on_timeout: false
+          spark_python_task:
+            python_file: ../../scripts/ml/train_models.py
+            parameters:
+              - --environment
+              - "{{job.parameters.environment}}"
+              - --config-root
+              - "{{job.parameters.config_root}}"
+              - --snapshot-id
+              - "{{job.parameters.snapshot_id}}"
+              - --mlflow-experiment-name
+              - "{{job.parameters.mlflow_experiment_name}}"
+              - --code-commit
+              - "{{job.parameters.code_commit}}"
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "4"
+            dependencies:
+              - ../../dist/*.whl

@@ -1,21 +1,11 @@
-import math
-import sys
-from contextlib import nullcontext
 from dataclasses import replace
 from datetime import datetime
-from types import SimpleNamespace
-from unittest.mock import Mock
 
 import pytest
-from pyspark.ml.linalg import Vectors
 
-from madrid_ml.models import LIGHTGBM_VERSION, fit_lightgbm, score_lightgbm
-from madrid_ml.tracking import log_baseline_run
 from madrid_ml.training import (
-    BacktestScore,
     TrainingConfig,
     build_temporal_folds,
-    select_config,
 )
 
 
@@ -37,51 +27,6 @@ def test_temporal_folds_are_expanding_and_non_overlapping(spark):
     assert {row.feature_hour.year for row in fold_2.validation.collect()} == {2023}
 
 
-def test_select_config_uses_mean_ap_and_simple_tie_break():
-    scores = [
-        BacktestScore("logistic_regression", "l2_0_01", "fold_1", 0.20),
-        BacktestScore("logistic_regression", "l2_0_01", "fold_2", 0.22),
-        BacktestScore("logistic_regression", "l2_0_1", "fold_1", 0.21),
-        BacktestScore("logistic_regression", "l2_0_1", "fold_2", 0.21),
-    ]
-
-    assert select_config(scores, "logistic_regression") == "l2_0_1"
-
-
-def test_native_lightgbm_fits_and_scores_a_spark_frame(spark):
-    frame = spark.createDataFrame(
-        [
-            (Vectors.dense(0.0, 0.0), 0.0),
-            (Vectors.dense(0.0, 1.0), 0.0),
-            (Vectors.dense(1.0, 0.0), 1.0),
-            (Vectors.dense(1.0, 1.0), 1.0),
-        ],
-        ["features", "target_accident_next_hour"],
-    )
-
-    model = fit_lightgbm(
-        frame,
-        config_name="leaves_31",
-        vector_size=2,
-        fold_name="test",
-    )
-    scores = [
-        row.score
-        for row in score_lightgbm(
-            model,
-            frame,
-            comparator="lightgbm",
-            vector_size=2,
-        )
-        .select("score")
-        .collect()
-    ]
-
-    assert LIGHTGBM_VERSION == "4.6.0"
-    assert len(scores) == 4
-    assert all(math.isfinite(score) and 0.0 <= score <= 1.0 for score in scores)
-
-
 def test_training_config_requires_a_unity_catalog_volume_path():
     valid = TrainingConfig(
         gold_catalog="dev_gold",
@@ -100,28 +45,3 @@ def test_training_config_requires_a_unity_catalog_volume_path():
 
     with pytest.raises(ValueError, match="Unity Catalog volume path"):
         replace(valid, mlflow_dfs_tmp="/tmp/mlflow")
-
-
-def test_child_run_uses_the_parent_experiment(monkeypatch):
-    mlflow = SimpleNamespace(
-        start_run=Mock(
-            return_value=nullcontext(
-                SimpleNamespace(info=SimpleNamespace(run_id="child-run"))
-            )
-        ),
-        log_params=Mock(),
-        log_dict=Mock(),
-    )
-    monkeypatch.setitem(sys.modules, "mlflow", mlflow)
-
-    run_id = log_baseline_run(
-        experiment_id="725276488056607",
-        parent_run_id="parent-run",
-        comparator="global_prevalence",
-        parameters={},
-        evaluations={},
-        state={},
-    )
-
-    assert run_id == "child-run"
-    assert mlflow.start_run.call_args.kwargs["experiment_id"] == "725276488056607"
