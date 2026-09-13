@@ -110,6 +110,6 @@ Los triggers se versionan detenidos y se activan explícitamente. Los parámetro
 por entorno están en `adf/params/`; `pro.json` necesita los IDs definitivos de
 los jobs antes del despliegue productivo.
 
-El job `gold_nrt_predictions` no tiene calendario propio. Está previsto que ADF
-lo invoque después de que finalice correctamente la ingesta Bronze/Silver de
-tráfico NRT, reutilizando la última meteorología y calidad del aire disponibles.
+El job `gold_nrt_predictions` no tiene calendario propio. ADF lo invoca después
+de que finaliza correctamente la ingesta Bronze/Silver de tráfico NRT,
+reutilizando la última meteorología y calidad del aire disponibles.

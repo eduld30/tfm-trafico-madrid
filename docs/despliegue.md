@@ -23,8 +23,8 @@ de `resources/jobs/` sobre compute serverless con entorno 4.
 
 Los jobs de ingesta se invocan desde ADF y los jobs ML son manuales.
 `gold_analytics_monthly` conserva su calendario inicialmente pausado;
-`gold_nrt_predictions` no tiene calendario propio y está previsto invocarlo
-desde ADF después de la ingesta de tráfico NRT.
+`gold_nrt_predictions` no tiene calendario propio y ADF lo invoca después de
+la ingesta de tráfico NRT.
 
 ## Producción
 

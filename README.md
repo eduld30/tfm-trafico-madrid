@@ -97,8 +97,8 @@ El alcance implementado incluye:
 
 La ejecución del snapshot, la promoción del modelo y la activación inicial de
 Gold analítica son operaciones explícitas. Los calendarios de ingesta se
-mantienen en ADF. El scoring Gold NRT no tiene calendario propio y está previsto
-invocarlo desde ADF tras la ingesta de tráfico NRT.
+mantienen en ADF. El scoring Gold NRT no tiene calendario propio; ADF lo invoca
+tras la ingesta de tráfico NRT.
 
 ## Documentación
 
