@@ -37,6 +37,10 @@
 			"adb_job_trafico_historico_id": {
 				"type": "string",
 				"value": "318829432651517"
+			},
+			"adb_job_predictions_nrt_id": {
+				"type": "string",
+				"value": "511952866762938"
 			}
 		},
 		"trustModeClaimForMi": {
