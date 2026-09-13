@@ -96,14 +96,15 @@ El alcance implementado incluye:
 - scoring NRT por distrito.
 
 La ejecución del snapshot, la promoción del modelo y la activación inicial de
-los jobs Gold son operaciones explícitas. Los calendarios de ingesta se
-mantienen en ADF y los de Gold se despliegan pausados.
+Gold analítica son operaciones explícitas. Los calendarios de ingesta se
+mantienen en ADF. El scoring Gold NRT no tiene calendario propio y está previsto
+invocarlo desde ADF tras la ingesta de tráfico NRT.
 
 ## Documentación
 
 - [Arquitectura](docs/arquitectura.md): componentes, capas y separación de entornos.
 - [Ingesta Bronze/Silver y ADF](docs/ingesta.md): configuración, Auto Loader y transformaciones.
-- [Capa Gold](docs/gold.md): tablas analíticas, serving y calendarios.
+- [Capa Gold](docs/gold.md): tablas analíticas, serving y ejecución.
 - [Machine learning](docs/ml.md): snapshots, entrenamiento, MLflow y scoring NRT.
 - [Despliegue](docs/despliegue.md): Asset Bundles, ADF, permisos y producción.
 - [Desarrollo](docs/desarrollo.md): estructura del código, pruebas y extensiones.

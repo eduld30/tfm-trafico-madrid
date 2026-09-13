@@ -100,8 +100,8 @@ ejecutan el job de Databricks correspondiente.
 
 | Carga | Frecuencia configurada |
 |---|---|
-| Tráfico y meteorología NRT | 10 minutos |
-| Calidad del aire NRT | 20 minutos |
+| Tráfico NRT | 10 minutos |
+| Meteorología y calidad del aire NRT | 20 minutos |
 | Eventos | Diaria, 07:00 |
 | Históricos | Día 1 mensual, entre 07:00 y 09:30 |
 | Dimensiones | Manual |
@@ -109,3 +109,7 @@ ejecutan el job de Databricks correspondiente.
 Los triggers se versionan detenidos y se activan explícitamente. Los parámetros
 por entorno están en `adf/params/`; `pro.json` necesita los IDs definitivos de
 los jobs antes del despliegue productivo.
+
+El job `gold_nrt_predictions` no tiene calendario propio. Está previsto que ADF
+lo invoque después de que finalice correctamente la ingesta Bronze/Silver de
+tráfico NRT, reutilizando la última meteorología y calidad del aire disponibles.

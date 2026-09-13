@@ -21,8 +21,10 @@ de `resources/jobs/` sobre compute serverless con entorno 4.
 | Gold | `gold_analytics_monthly`, `gold_nrt_predictions` |
 | ML | `ml_training_snapshot`, `ml_model_training`, `ml_model_promotion` |
 
-Los jobs de ingesta se invocan desde ADF. Los jobs ML son manuales y los dos
-jobs Gold con calendario se despliegan pausados.
+Los jobs de ingesta se invocan desde ADF y los jobs ML son manuales.
+`gold_analytics_monthly` conserva su calendario inicialmente pausado;
+`gold_nrt_predictions` no tiene calendario propio y está previsto invocarlo
+desde ADF después de la ingesta de tráfico NRT.
 
 ## Producción
 

@@ -36,11 +36,14 @@ distritos, carga el modelo registrado con alias `Champion` y publica:
 La tabla conserva el histórico mediante `MERGE` con
 `cod_distrito + prediction_window_start`; la vista devuelve el lote más
 reciente. El cutoff se redondea a diez minutos en hora civil de Madrid y la
-predicción cubre los 60 minutos siguientes.
+predicción cubre los 60 minutos siguientes. `predicted_at` registra también la
+hora civil de Madrid y respeta los cambios CET/CEST.
 
-El job `gold_nrt_predictions` se programa cada diez minutos desde el minuto 05
-y se despliega pausado. Requiere las cuatro tablas Silver, el volumen temporal
-MLflow y el modelo promocionado.
+El job `gold_nrt_predictions` no tiene calendario propio. Está preparado para
+que ADF lo invoque tras completar correctamente la ingesta de tráfico NRT. Una
+vez enlazado, permitirá generar una predicción cada diez minutos usando la
+última meteorología y calidad del aire disponibles. Requiere las cuatro tablas
+Silver, el volumen temporal MLflow y el modelo promocionado.
 
 ## Consumo
 

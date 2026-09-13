@@ -5,10 +5,6 @@ resources:
       description: "Predicción de riesgo por distrito con una ventana móvil de 60 minutos"
       max_concurrent_runs: 1
       timeout_seconds: 540
-      schedule:
-        quartz_cron_expression: "0 5/10 * * * ?"
-        timezone_id: Europe/Madrid
-        pause_status: PAUSED
 
       parameters:
         - name: environment

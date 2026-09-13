@@ -31,6 +31,7 @@ CURRENT_PREDICTION_VIEW = "v_riesgo_actual_distrito"
 DEFAULT_REGISTERED_MODEL = "accident_risk_model"
 DEFAULT_MODEL_ALIAS = "Champion"
 NRT_TIME_CONTRACT = "rolling_60_minutes_source_wall_clock_as_stored_in_silver"
+MADRID_TIMEZONE = "Europe/Madrid"
 
 _IDENTIFIER_PATTERN = re.compile(r"^[a-z_][a-z0-9_]*$")
 _MODEL_NAME_PATTERN = re.compile(
@@ -104,7 +105,7 @@ class NrtScoringResult:
 def floor_to_ten_minutes(value: datetime) -> datetime:
     """Return a naive Madrid wall-clock cutoff aligned to ten minutes."""
     if value.tzinfo is not None:
-        value = value.astimezone(ZoneInfo("Europe/Madrid")).replace(tzinfo=None)
+        value = value.astimezone(ZoneInfo(MADRID_TIMEZONE)).replace(tzinfo=None)
     return value.replace(
         minute=(value.minute // 10) * 10,
         second=0,
@@ -114,7 +115,7 @@ def floor_to_ten_minutes(value: datetime) -> datetime:
 
 def current_madrid_cutoff() -> datetime:
     """Return the current Madrid civil time aligned to the scoring cadence."""
-    return floor_to_ten_minutes(datetime.now(ZoneInfo("Europe/Madrid")))
+    return floor_to_ten_minutes(datetime.now(ZoneInfo(MADRID_TIMEZONE)))
 
 
 def _require_columns(df: DataFrame, columns: tuple[str, ...], logical_table: str) -> None:
@@ -393,7 +394,9 @@ def score_nrt_features(
         F.lit(model.model_version).alias("model_version"),
         F.lit(FEATURE_SCHEMA_VERSION).alias("feature_schema_version"),
         F.lit(run_id).alias("prediction_run_id"),
-        F.current_timestamp().alias("predicted_at"),
+        F.from_utc_timestamp(
+            F.current_timestamp(), MADRID_TIMEZONE
+        ).alias("predicted_at"),
         "traffic_data_max_timestamp",
         "weather_data_max_timestamp",
         "air_data_max_timestamp",
