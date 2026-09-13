@@ -32,6 +32,9 @@
     "default_properties_adb_job_trafico_historico_id_value": {
       "value": "<<pendiente>>"
     },
+    "default_properties_adb_job_predictions_nrt_id_value": {
+      "value": "<<pendiente>>"
+    },
     "ls_adls_properties_typeProperties_storageAccountUrl": {
       "value": "https://staprotfmtraficomadrid.dfs.core.windows.net/"
     },
