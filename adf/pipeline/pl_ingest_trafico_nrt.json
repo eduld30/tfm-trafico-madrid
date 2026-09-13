@@ -80,6 +80,36 @@
 					"referenceName": "ls_adb_trial",
 					"type": "LinkedServiceReference"
 				}
+			},
+			{
+				"name": "run_adb_predictions_nrt",
+				"type": "DatabricksJob",
+				"dependsOn": [
+					{
+						"activity": "run_adb_trafico_nrt",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"jobId": {
+						"value": "@pipeline().globalParameters.adb_job_predictions_nrt_id",
+						"type": "Expression"
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "ls_adb_trial",
+					"type": "LinkedServiceReference"
+				}
 			}
 		],
 		"annotations": [],
