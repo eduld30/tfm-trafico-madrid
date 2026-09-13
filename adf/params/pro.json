@@ -35,9 +35,6 @@
     "default_properties_adb_job_predictions_nrt_id_value": {
       "value": "435211310085963"
     },
-    "default_properties_adb_job_predictions_nrt_id_value": {
-      "value": "<<pendiente>>"
-    },
     "ls_adls_properties_typeProperties_storageAccountUrl": {
       "value": "https://staprotfmtraficomadrid.dfs.core.windows.net/"
     },
