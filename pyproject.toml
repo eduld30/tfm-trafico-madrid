@@ -18,6 +18,7 @@ dependencies = [
 databricks = [
     "pyspark>=3.5,<4",
     "delta-spark>=3,<4",
+    "setuptools>=68",
 ]
 dev = [
     "build>=1,<2",
