@@ -1,0 +1,35 @@
+resources:
+  jobs:
+    gold_analytics_monthly:
+      name: madrid-gold-analytics-monthly
+      description: "Reconstrucción mensual de las tablas analíticas para Power BI"
+      max_concurrent_runs: 1
+      timeout_seconds: 3600
+      schedule:
+        quartz_cron_expression: "0 0 6 2 * ?"
+        timezone_id: Europe/Madrid
+        pause_status: PAUSED
+
+      parameters:
+        - name: environment
+          default: ${var.environment}
+        - name: config_root
+          default: ${workspace.file_path}/conf
+      tasks:
+        - task_key: rebuild_gold_analytics
+          environment_key: default
+          timeout_seconds: 3600
+          max_retries: 0
+          retry_on_timeout: false
+          notebook_task:
+            notebook_path: ../../notebooks/run_gold.py
+            base_parameters:
+              environment: "{{job.parameters.environment}}"
+              config_root: "{{job.parameters.config_root}}"
+
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "4"
+            dependencies:
+              - ../../dist/*.whl

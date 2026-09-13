@@ -16,7 +16,7 @@
 			"recurrence": {
 				"frequency": "Minute",
 				"interval": 10,
-				"startTime": "2026-07-26T12:55:00",
+				"startTime": "2026-07-26T00:02:00",
 				"timeZone": "Romance Standard Time"
 			}
 		}

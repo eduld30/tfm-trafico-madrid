@@ -1,0 +1,39 @@
+resources:
+  jobs:
+    ml_training_snapshot:
+      name: madrid-ml-training-snapshot
+      description: "Construcción manual del snapshot histórico Gold para ML"
+      max_concurrent_runs: 1
+      timeout_seconds: 900
+
+      parameters:
+        - name: environment
+          default: ${var.environment}
+        - name: config_root
+          default: ${workspace.file_path}/conf
+        - name: code_commit
+          default: ""
+        - name: expected_versions_json
+          default: ""
+
+      tasks:
+        - task_key: build_ml_snapshot
+          environment_key: default
+          timeout_seconds: 900
+          max_retries: 0
+          retry_on_timeout: false
+          disable_auto_optimization: true
+          notebook_task:
+            notebook_path: ../../notebooks/run_ml_snapshot.py
+            base_parameters:
+              environment: "{{job.parameters.environment}}"
+              config_root: "{{job.parameters.config_root}}"
+              code_commit: "{{job.parameters.code_commit}}"
+              expected_versions_json: "{{job.parameters.expected_versions_json}}"
+
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "4"
+            dependencies:
+              - ../../dist/*.whl
