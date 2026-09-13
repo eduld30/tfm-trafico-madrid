@@ -1,0 +1,12 @@
+{
+	"name": "ls_adb_trial",
+	"properties": {
+		"annotations": [],
+		"type": "AzureDatabricks",
+		"typeProperties": {
+			"domain": "https://adb-7405617800230121.1.azuredatabricks.net",
+			"authentication": "MSI",
+			"workspaceResourceId": "/subscriptions/6c8504f9-9d88-48aa-aa5f-4c0729c3a5ee/resourceGroups/rg-tfm-trafico-madrid/providers/Microsoft.Databricks/workspaces/adbtrialtfmtraficomadrid"
+		}
+	}
+}

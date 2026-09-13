@@ -1,0 +1,33 @@
+resources:
+  jobs:
+    gold_nrt_predictions:
+      name: madrid-gold-nrt-predictions
+      description: "Predicción de riesgo por distrito con una ventana móvil de 60 minutos"
+      max_concurrent_runs: 1
+      timeout_seconds: 540
+
+      parameters:
+        - name: environment
+          default: ${var.environment}
+        - name: config_root
+          default: ${workspace.file_path}/conf
+      tasks:
+        - task_key: score_nrt
+          environment_key: default
+          timeout_seconds: 540
+          max_retries: 0
+          retry_on_timeout: false
+          disable_auto_optimization: true
+          notebook_task:
+            notebook_path: ../../notebooks/run_nrt_predictions.py
+            base_parameters:
+              environment: "{{job.parameters.environment}}"
+              config_root: "{{job.parameters.config_root}}"
+              prediction_run_id: "{{job.run_id}}"
+
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "4"
+            dependencies:
+              - ../../dist/*.whl

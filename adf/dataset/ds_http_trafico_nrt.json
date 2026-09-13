@@ -1,0 +1,18 @@
+{
+	"name": "ds_http_trafico_nrt",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "ls_http_ayuntamiento",
+			"type": "LinkedServiceReference"
+		},
+		"annotations": [],
+		"type": "Binary",
+		"typeProperties": {
+			"location": {
+				"type": "HttpServerLocation",
+				"relativeUrl": "/dataset/202087-0-trafico-intensidad/resource/202087-0-trafico-intensidad/download/202087-0-trafico-intensidad.xml"
+			}
+		}
+	},
+	"type": "Microsoft.DataFactory/factories/datasets"
+}

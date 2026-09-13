@@ -1,0 +1,23 @@
+environment: pro
+
+storage:
+  account_name: "staprotfmtraficomadrid"
+  containers:
+    landing: landing
+    bronze: bronze
+    silver: silver
+    gold: gold
+
+catalogs:
+  bronze: pro_bronze
+  silver: pro_silver
+  gold: pro_gold
+
+paths:
+  checkpoint_dir: "_checkpoint"
+  schema_location_mode: "same_as_checkpoint"
+
+runtime:
+  default_trigger: available_now
+  log_level: INFO
+  diagnostic_counts: false

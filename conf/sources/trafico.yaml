@@ -1,0 +1,272 @@
+source: trafico
+enabled: true
+
+datasets:
+  # Las dimensiones van primero: trafico_nrt/trafico_historico dependen de
+  # dim_trafico (lookup_join) y deben ejecutarse después de ella. Con
+  # --source trafico (sin --dataset) el motor procesa los datasets en el
+  # orden en que aparecen aquí.
+  - name: dim_trafico
+    description: "Dimensión de puntos de medida de tráfico"
+    enabled: true
+    bronze:
+      enabled: true
+      format: csv
+      source_path: "trafico/dim_trafico"
+      target_path: "trafico/dim_trafico"
+      reader_options:
+        delimiter: ";"
+        header: "true"
+        encoding: "windows-1252"
+        mode: "PERMISSIVE"
+      autoloader_options: &autoloader_options
+        schema_evolution_mode: addNewColumns
+        rescued_data_column: _rescued_data
+      transformations:
+        - type: normalize_column_names
+    silver:
+      enabled: true
+      target_path: "trafico/dim_trafico"
+      write_strategy: overwrite
+      transformations:
+        - type: empty_to_null
+          columns:
+            - distrito
+            - nombre
+        - type: cast
+          columns:
+            distrito: integer
+            id: long
+            utm_x: double
+            utm_y: double
+            longitud: double
+            latitud: double
+        - type: trim
+          columns:
+            - tipo_elem
+            - cod_cent
+            - nombre
+
+  - name: dim_distritos
+    description: "Catálogo de distritos de Madrid"
+    enabled: true
+    bronze:
+      enabled: true
+      format: csv
+      source_path: "trafico/dim_distritos"
+      target_path: "trafico/dim_distritos"
+      reader_options: &utf8_csv_options
+        delimiter: ";"
+        header: "true"
+        encoding: "UTF-8"
+        mode: "PERMISSIVE"
+      autoloader_options: *autoloader_options
+      transformations:
+        - type: normalize_column_names
+    silver:
+      enabled: true
+      target_path: "trafico/dim_distritos"
+      write_strategy: overwrite
+      transformations:
+        - type: regex_replace
+          columns:
+            - area
+          pattern: ","
+          replacement: "."
+        - type: cast
+          columns:
+            cod_dis: integer
+            area: double
+        - type: trim
+          columns:
+            - cod_dis_tx
+            - nombre
+            - distri_may
+            - distri_mt
+        - type: strip_accents
+          columns:
+            - distri_may
+        - type: upper
+          # distri_may es la clave de cruce para normalizar el distrito de
+          # accidentes/eventos: se fuerza mayúsculas y sin tildes en origen
+          # para no depender de que el CSV del Ayuntamiento ya venga así.
+          columns:
+            - distri_may
+        - type: regex_replace
+          # El KML trae los distritos compuestos con espacios alrededor del
+          # guion ("MONCLOA - ARAVACA"), pero eventos_culturales los trae
+          # pegados ("MONCLOA-ARAVACA"). Se colapsa a un formato único.
+          columns:
+            - distri_may
+          pattern: "\\s*-\\s*"
+          replacement: "-"
+
+  - name: trafico_historico
+    description: "Histórico mensual de tráfico desde 2013"
+    enabled: true
+    bronze:
+      enabled: true
+      format: csv
+      source_path: "trafico/trafico_historico"
+      target_path: "trafico/trafico_historico"
+      reader_options: *utf8_csv_options
+      autoloader_options: *autoloader_options
+      transformations:
+        - type: normalize_column_names
+    silver:
+      enabled: true
+      target_path: "trafico/trafico_historico"
+      write_strategy: merge
+      business_keys:
+        - id
+        - fecha_hora
+      transformations:
+        - type: parse_timestamp
+          source_column: fecha
+          target_column: fecha_hora
+          format: "yyyy-MM-dd HH:mm:ss"
+        - type: drop
+          columns:
+            - fecha
+        - type: cast
+          columns:
+            id: long
+            intensidad: double
+            ocupacion: double
+            carga: double
+            vmed: double
+            periodo_integracion: integer
+        - type: lookup_join
+          lookup_table:
+            layer: silver
+            source: trafico
+            dataset: dim_trafico
+          join_type: left
+          conditions:
+            id: id
+          select:
+            distrito_cod: distrito
+            latitud: latitud
+            longitud: longitud
+        - type: lookup_join
+          lookup_table:
+            layer: silver
+            source: trafico
+            dataset: dim_distritos
+          join_type: left
+          conditions:
+            distrito_cod: cod_dis
+          select:
+            distrito_nombre: nombre
+        - type: trim
+          columns:
+            - tipo_elem
+            - error
+        - type: empty_to_null
+          columns:
+            - error
+        - type: deduplicate
+          keys:
+            - id
+            - fecha_hora
+          order_by:
+            - column: _ingestion_timestamp
+              direction: desc
+
+  - name: trafico_nrt
+    description: "Mediciones de tráfico cercanas a tiempo real"
+    enabled: true
+    bronze:
+      enabled: true
+      format: xml
+      source_path: "trafico/trafico_nrt"
+      target_path: "trafico/trafico_nrt"
+      reader_options:
+        row_tag: "pms"
+        record_path: "pm"
+        parent_columns: "fecha_hora"
+      autoloader_options:
+        <<: *autoloader_options
+        extra_options:
+          # Auto Loader infiere XML como STRING por defecto; pm debe ser un
+          # ARRAY<STRUCT> para poder expandir los puntos de medida.
+          cloudFiles.inferColumnTypes: "true"
+      transformations:
+        - type: normalize_column_names
+    silver:
+      enabled: true
+      target_path: "trafico/trafico_nrt"
+      write_strategy: merge
+      business_keys:
+        - idelem
+        - fecha_hora
+      transformations:
+        - type: empty_to_null
+          columns:
+            - descripcion
+            - acceso_asociado
+            - intensidad_sat
+            - error
+            - subarea
+            - velocidad
+        - type: regex_replace
+          columns:
+            - st_x
+            - st_y
+          pattern: ","
+          replacement: "."
+        - type: parse_timestamp
+          source_column: fecha_hora
+          target_column: fecha_hora
+          format: "dd/MM/yyyy HH:mm:ss"
+        - type: cast
+          columns:
+            idelem: long
+            intensidad: double
+            ocupacion: double
+            carga: double
+            nivel_servicio: integer
+            intensidad_sat: double
+            velocidad: double
+            st_x: double
+            st_y: double
+        - type: filter
+          # st_x/st_y en ETRS89 huso 30N (metros). Rango con margen sobre el
+          # término municipal de Madrid; descarta coordenadas anómalas (nulas,
+          # cero o fuera de la Comunidad de Madrid).
+          condition: "st_x BETWEEN 415000 AND 455000 AND st_y BETWEEN 4455000 AND 4495000"
+        - type: lookup_join
+          lookup_table:
+            layer: silver
+            source: trafico
+            dataset: dim_trafico
+          join_type: left
+          conditions:
+            idelem: id
+          select:
+            distrito_cod: distrito
+            latitud: latitud
+            longitud: longitud
+        - type: lookup_join
+          lookup_table:
+            layer: silver
+            source: trafico
+            dataset: dim_distritos
+          join_type: left
+          conditions:
+            distrito_cod: cod_dis
+          select:
+            distrito_nombre: nombre
+        - type: trim
+          columns:
+            - descripcion
+            - acceso_asociado
+            - error
+            - subarea
+        - type: deduplicate
+          keys:
+            - idelem
+            - fecha_hora
+          order_by:
+            - column: _ingestion_timestamp
+              direction: desc

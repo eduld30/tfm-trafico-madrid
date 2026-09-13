@@ -1,0 +1,120 @@
+source: eventos
+enabled: true
+
+datasets:
+  - name: eventos_culturales
+    description: "Ventana móvil de eventos culturales de los próximos 100 días"
+    enabled: true
+    bronze:
+      enabled: true
+      format: csv
+      source_path: "eventos/eventos_culturales"
+      target_path: "eventos/eventos_culturales"
+      reader_options:
+        delimiter: ";"
+        header: "true"
+        encoding: "windows-1252"
+        mode: "PERMISSIVE"
+      autoloader_options:
+        schema_evolution_mode: addNewColumns
+        rescued_data_column: _rescued_data
+      transformations:
+        - type: normalize_column_names
+    silver:
+      enabled: true
+      target_path: "eventos/eventos_culturales"
+      write_strategy: merge
+      business_keys:
+        - id_evento
+      transformations:
+        - type: empty_to_null
+          columns:
+            - id_evento
+            - precio
+            - dias_semana
+            - dias_excluidos
+            - hora
+            - descripcion
+            - titulo_actividad
+            - url_actividad
+            - url_instalacion
+            - nombre_instalacion
+            - accesibilidad_instalacion
+            - clase_vial_instalacion
+            - nombre_via_instalacion
+            - num_instalacion
+            - distrito_instalacion
+            - barrio_instalacion
+            - codigo_postal_instalacion
+            - coordenada_x
+            - coordenada_y
+            - latitud
+            - longitud
+            - tipo
+            - audiencia
+        - type: parse_timestamp
+          source_column: fecha
+          target_column: fecha_inicio
+          format: "yyyy-MM-dd HH:mm:ss.S"
+        - type: parse_timestamp
+          source_column: fecha_fin
+          target_column: fecha_fin
+          format: "yyyy-MM-dd HH:mm:ss.S"
+        - type: drop
+          columns:
+            - fecha
+        - type: cast
+          columns:
+            id_evento: long
+            gratuito: integer
+            larga_duracion: integer
+            coordenada_x: double
+            coordenada_y: double
+            latitud: double
+            longitud: double
+        - type: filter
+          condition: "id_evento IS NOT NULL"
+        - type: trim
+          columns:
+            - titulo
+            - precio
+            - hora
+            - distrito_instalacion
+            - barrio_instalacion
+            - codigo_postal_instalacion
+            - tipo
+            - audiencia
+        - type: strip_accents
+          columns:
+            - distrito_instalacion
+        - type: upper
+          # distrito_instalacion llega como texto libre (p. ej. "Centro");
+          # se normaliza a mayúsculas y sin tildes para cruzar con
+          # distri_may de dim_distritos, que sigue esa misma convención.
+          columns:
+            - distrito_instalacion
+        - type: regex_replace
+          # Por si algún registro trae los distritos compuestos con
+          # espacios alrededor del guion ("SAN BLAS - CANILLEJAS"); se
+          # colapsa al mismo formato que distri_may tras normalizarlo.
+          columns:
+            - distrito_instalacion
+          pattern: "\\s*-\\s*"
+          replacement: "-"
+        - type: lookup_join
+          lookup_table:
+            layer: silver
+            source: trafico
+            dataset: dim_distritos
+          join_type: left
+          conditions:
+            distrito_instalacion: distri_may
+          select:
+            distrito_normalizado: nombre
+            distrito_cod: cod_dis
+        - type: deduplicate
+          keys:
+            - id_evento
+          order_by:
+            - column: _ingestion_timestamp
+              direction: desc

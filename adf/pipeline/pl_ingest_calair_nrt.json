@@ -1,0 +1,91 @@
+{
+	"name": "pl_ingest_calair_nrt",
+	"properties": {
+		"activities": [
+			{
+				"name": "copy_calair_nrt",
+				"type": "Copy",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.00:10:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 30
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "BinarySource",
+						"storeSettings": {
+							"type": "HttpReadSettings",
+							"relativeUrl": "/dataset/212531-0-calidad-aire-tiempo-real/resource/212531-2-calidad-aire-tiempo-real/download/212531-2-calidad-aire-tiempo-real.csv",
+							"requestMethod": "GET"
+						},
+						"formatSettings": {
+							"type": "BinaryReadSettings"
+						}
+					},
+					"sink": {
+						"type": "BinarySink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						},
+						"copyBehavior": "PreserveHierarchy"
+					},
+					"enableStaging": false
+				},
+				"inputs": [
+					{
+						"referenceName": "ds_http_calair_nrt",
+						"type": "DatasetReference"
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "ds_adls_landing",
+						"type": "DatasetReference",
+						"parameters": {
+							"p_directory": {
+								"value": "@concat('calair/calair_nrt/',formatDateTime(utcNow(),'yyyy'),'/',formatDateTime(utcNow(),'MM'),'/',formatDateTime(utcNow(),'dd'),'/',formatDateTime(utcNow(),'HH'))",
+								"type": "Expression"
+							},
+							"p_filename": "calair_nrt_@{formatDateTime(utcNow(),'yyyyMMdd_HHmm')}.csv"
+						}
+					}
+				]
+			},
+			{
+				"name": "run_adb_calair_nrt",
+				"type": "DatabricksJob",
+				"dependsOn": [
+					{
+						"activity": "copy_calair_nrt",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 3,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"jobId": {
+						"value": "@pipeline().globalParameters.adb_job_calair_nrt_id",
+						"type": "Expression"
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "ls_adb_trial",
+					"type": "LinkedServiceReference"
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2026-07-30T19:18:20Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

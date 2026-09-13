@@ -1,0 +1,45 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "factoryName": {
+      "value": "adfprotfmtraficomadrid"
+    },
+    "default_properties_adb_job_trafico_nrt_id_value": {
+      "value": "810567583080736"
+    },
+    "default_properties_adb_job_accidentes_historico_id_value": {
+      "value": "1017573204563572"
+    },
+    "default_properties_adb_job_calair_historico_id_value": {
+      "value": "299629111108915"
+    },
+    "default_properties_adb_job_calair_nrt_id_value": {
+      "value": "906622605322819"
+    },
+    "default_properties_adb_job_dimensiones_id_value": {
+      "value": "654977679241276"
+    },
+    "default_properties_adb_job_eventos_id_value": {
+      "value": "338090233630217"
+    },
+    "default_properties_adb_job_meteo_historico_id_value": {
+      "value": "375940811927107"
+    },
+    "default_properties_adb_job_meteo_nrt_id_value": {
+      "value": "839311906675336"
+    },
+    "default_properties_adb_job_trafico_historico_id_value": {
+      "value": "256988224217283"
+    },
+    "default_properties_adb_job_predictions_nrt_id_value": {
+      "value": "435211310085963"
+    },
+    "ls_adls_properties_typeProperties_storageAccountUrl": {
+      "value": "https://staprotfmtraficomadrid.dfs.core.windows.net/"
+    },
+    "ls_key_vault_properties_typeProperties_keyVaultBaseUrl": {
+      "value": "https://kvprotfmtraficomadrid.vault.azure.net/"
+    }
+  }
+}

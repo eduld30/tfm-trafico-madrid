@@ -1,0 +1,369 @@
+name: CI/CD
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+  push:
+    branches:
+      - develop
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20.x"
+  ADF_ROOT: adf
+  ADF_OUTPUT: ArmTemplateOutput
+
+jobs:
+  resolve_environment:
+    name: Resolve target environment
+    runs-on: ubuntu-latest
+    outputs:
+      target: ${{ steps.resolve.outputs.target }}
+      resource_group: ${{ steps.resolve.outputs.resource_group }}
+      factory_name: ${{ steps.resolve.outputs.factory_name }}
+      databricks_host: ${{ steps.resolve.outputs.databricks_host }}
+    steps:
+      - name: Map branch to environment
+        id: resolve
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          BASE_REF: ${{ github.base_ref }}
+          DEV_RESOURCE_GROUP: ${{ vars.DEV_RESOURCE_GROUP }}
+          DEV_FACTORY_NAME: ${{ vars.DEV_FACTORY_NAME }}
+          DEV_DATABRICKS_HOST: ${{ vars.DEV_DATABRICKS_HOST }}
+          PRO_RESOURCE_GROUP: ${{ vars.PRO_RESOURCE_GROUP }}
+          PRO_FACTORY_NAME: ${{ vars.PRO_FACTORY_NAME }}
+          PRO_DATABRICKS_HOST: ${{ vars.PRO_DATABRICKS_HOST }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            target_branch="$BASE_REF"
+          else
+            target_branch="$REF_NAME"
+          fi
+
+          case "$target_branch" in
+            develop)
+              target="dev"
+              resource_group="$DEV_RESOURCE_GROUP"
+              factory_name="$DEV_FACTORY_NAME"
+              databricks_host="$DEV_DATABRICKS_HOST"
+              ;;
+            main)
+              target="pro"
+              resource_group="$PRO_RESOURCE_GROUP"
+              factory_name="$PRO_FACTORY_NAME"
+              databricks_host="$PRO_DATABRICKS_HOST"
+              ;;
+            *)
+              echo "Unsupported target branch: $target_branch" >&2
+              exit 1
+              ;;
+          esac
+
+          for required_value in \
+            "$AZURE_SUBSCRIPTION_ID" \
+            "$resource_group" \
+            "$factory_name" \
+            "$databricks_host"; do
+            if [[ -z "$required_value" ]]; then
+              echo "A required GitHub repository variable is missing for $target." >&2
+              exit 1
+            fi
+          done
+
+          echo "target=$target" >> "$GITHUB_OUTPUT"
+          echo "resource_group=$resource_group" >> "$GITHUB_OUTPUT"
+          echo "factory_name=$factory_name" >> "$GITHUB_OUTPUT"
+          echo "databricks_host=$databricks_host" >> "$GITHUB_OUTPUT"
+
+  python_quality:
+    name: Test, lint and build Python package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install package with development dependencies
+        run: python -m pip install -e ".[dev,databricks]"
+
+      - name: Run lint
+        run: python -m ruff check src tests
+
+      - name: Run tests
+        run: python -m pytest
+
+      - name: Build wheel
+        run: python -m build --wheel
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: madrid-ingestion-wheel
+          path: dist/*.whl
+          if-no-files-found: error
+          retention-days: 7
+
+  adf_validate:
+    name: Validate and export ADF
+    needs: resolve_environment
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_TARGET: ${{ needs.resolve_environment.outputs.target }}
+      ADF_FACTORY_RESOURCE_ID: /subscriptions/${{ vars.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ vars.DEV_RESOURCE_GROUP }}/providers/Microsoft.DataFactory/factories/${{ vars.DEV_FACTORY_NAME }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install ADF utilities
+        run: npm ci
+
+      - name: Validate ADF resources
+        run: npm run build -- validate "$ADF_ROOT" "$ADF_FACTORY_RESOURCE_ID"
+
+      - name: Export ARM template
+        run: npm run build -- export "$ADF_ROOT" "$ADF_FACTORY_RESOURCE_ID" "$ADF_OUTPUT"
+
+      - name: Check exported ARM template
+        run: |
+          test -f "$ADF_OUTPUT/ARMTemplateForFactory.json"
+          test -f "$ADF_OUTPUT/ARMTemplateParametersForFactory.json"
+
+      - name: Check ARM parameter overrides
+        shell: bash
+        run: |
+          diff -u \
+            <(jq -r '.parameters | keys[]' "$ADF_OUTPUT/ARMTemplateParametersForFactory.json") \
+            <(jq -r '.parameters | keys[]' "adf/params/$DEPLOY_TARGET.json")
+
+      - name: Check environment parameters are complete
+        shell: bash
+        run: |
+          if jq -e \
+            '[.parameters[] | .value] | any(. == "<<pendiente>>")' \
+            "adf/params/$DEPLOY_TARGET.json" > /dev/null; then
+            echo "ADF parameters for $DEPLOY_TARGET still contain pending values." >&2
+            exit 1
+          fi
+
+      - name: Upload ARM template
+        uses: actions/upload-artifact@v4
+        with:
+          name: adf-arm-template
+          path: ArmTemplateOutput
+          if-no-files-found: error
+          retention-days: 7
+
+  databricks_validate:
+    name: Validate Databricks bundle
+    needs: resolve_environment
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      DEPLOY_TARGET: ${{ needs.resolve_environment.outputs.target }}
+      DATABRICKS_HOST: ${{ needs.resolve_environment.outputs.databricks_host }}
+      AZURE_CORE_OUTPUT: none
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Azure login with OIDC
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set up Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Validate Databricks bundle
+        run: databricks bundle validate -t "$DEPLOY_TARGET"
+
+  deploy_adf:
+    name: Deploy ADF
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs:
+      - resolve_environment
+      - python_quality
+      - adf_validate
+      - databricks_validate
+      - deploy_databricks
+    runs-on: ubuntu-latest
+    concurrency:
+      group: adf-${{ needs.resolve_environment.outputs.target }}-deploy
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      DEPLOY_TARGET: ${{ needs.resolve_environment.outputs.target }}
+      ADF_RESOURCE_GROUP: ${{ needs.resolve_environment.outputs.resource_group }}
+      ADF_FACTORY_NAME: ${{ needs.resolve_environment.outputs.factory_name }}
+      ADF_PARAMETERS: adf/params/${{ needs.resolve_environment.outputs.target }}.json
+      AZURE_CORE_OUTPUT: none
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download ARM template
+        uses: actions/download-artifact@v4
+        with:
+          name: adf-arm-template
+          path: ArmTemplateOutput
+
+      - name: Azure login with OIDC
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          enable-AzPSSession: true
+
+      - name: Download official ADF pre/post-deployment script
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --location \
+            "https://raw.githubusercontent.com/Azure/Azure-DataFactory/507f4d4a53da29edc684d934161aa880befd3e0c/SamplesV2/ContinuousIntegrationAndDelivery/PrePostDeploymentScript.Ver2.ps1" \
+            --output "$RUNNER_TEMP/PrePostDeploymentScript.Ver2.ps1"
+
+      - name: Save active ADF triggers
+        uses: azure/powershell@v3
+        with:
+          azPSVersion: latest
+          inlineScript: |
+            $startedTriggers = @(
+              Get-AzDataFactoryV2Trigger `
+                -ResourceGroupName "$env:ADF_RESOURCE_GROUP" `
+                -DataFactoryName "$env:ADF_FACTORY_NAME" |
+                Where-Object { $_.RuntimeState -eq "Started" } |
+                ForEach-Object { $_.Name }
+            )
+            ConvertTo-Json -InputObject $startedTriggers |
+              Set-Content -Path "${{ runner.temp }}/adf-started-triggers.json"
+
+      - name: Stop modified ADF triggers
+        id: pre_deploy
+        uses: azure/powershell@v3
+        with:
+          azPSVersion: latest
+          inlineScript: |
+            & "${{ runner.temp }}/PrePostDeploymentScript.Ver2.ps1" `
+              -ArmTemplate "ArmTemplateOutput/ARMTemplateForFactory.json" `
+              -ArmTemplateParameters "$env:ADF_PARAMETERS" `
+              -ResourceGroupName "$env:ADF_RESOURCE_GROUP" `
+              -DataFactoryName "$env:ADF_FACTORY_NAME" `
+              -PreDeployment $true `
+              -DeleteDeployment $false
+
+      - name: Deploy ARM template
+        id: arm_deploy
+        uses: azure/arm-deploy@v2
+        with:
+          scope: resourcegroup
+          subscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          resourceGroupName: ${{ needs.resolve_environment.outputs.resource_group }}
+          deploymentName: adf-${{ needs.resolve_environment.outputs.target }}-${{ github.run_id }}
+          template: ArmTemplateOutput/ARMTemplateForFactory.json
+          parameters: >-
+            ArmTemplateOutput/ARMTemplateParametersForFactory.json
+            adf/params/${{ needs.resolve_environment.outputs.target }}.json
+          failOnStdErr: false
+
+      - name: Clean up ADF resources and restore configured triggers
+        if: steps.arm_deploy.outcome == 'success'
+        uses: azure/powershell@v3
+        with:
+          azPSVersion: latest
+          inlineScript: |
+            & "${{ runner.temp }}/PrePostDeploymentScript.Ver2.ps1" `
+              -ArmTemplate "ArmTemplateOutput/ARMTemplateForFactory.json" `
+              -ArmTemplateParameters "$env:ADF_PARAMETERS" `
+              -ResourceGroupName "$env:ADF_RESOURCE_GROUP" `
+              -DataFactoryName "$env:ADF_FACTORY_NAME" `
+              -PreDeployment $false `
+              -DeleteDeployment $false
+
+      - name: Restore previously active triggers after a failed deployment
+        if: failure() && steps.pre_deploy.outcome == 'success'
+        uses: azure/powershell@v3
+        with:
+          azPSVersion: latest
+          inlineScript: |
+            $savedTriggers = Get-Content "${{ runner.temp }}/adf-started-triggers.json" |
+              ConvertFrom-Json
+            @($savedTriggers) | ForEach-Object {
+              Start-AzDataFactoryV2Trigger `
+                -ResourceGroupName "$env:ADF_RESOURCE_GROUP" `
+                -DataFactoryName "$env:ADF_FACTORY_NAME" `
+                -Name $_ `
+                -Force
+            }
+
+  deploy_databricks:
+    name: Deploy Databricks bundle
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs:
+      - resolve_environment
+      - python_quality
+      - adf_validate
+      - databricks_validate
+    runs-on: ubuntu-latest
+    concurrency:
+      group: databricks-${{ needs.resolve_environment.outputs.target }}-deploy
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      DEPLOY_TARGET: ${{ needs.resolve_environment.outputs.target }}
+      DATABRICKS_HOST: ${{ needs.resolve_environment.outputs.databricks_host }}
+      AZURE_CORE_OUTPUT: none
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install wheel build dependency
+        run: python -m pip install "build>=1,<2"
+
+      - name: Azure login with OIDC
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set up Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Deploy Databricks bundle
+        run: databricks bundle deploy -t "$DEPLOY_TARGET"

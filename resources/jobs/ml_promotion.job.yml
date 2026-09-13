@@ -1,0 +1,44 @@
+resources:
+  jobs:
+    ml_model_promotion:
+      name: madrid-ml-model-promotion
+      description: "Registro y promoción manual de un modelo entrenado"
+      max_concurrent_runs: 1
+      timeout_seconds: 600
+      queue:
+        enabled: false
+      parameters:
+        - name: model_run_id
+          default: ""
+        - name: environment
+          default: ${var.environment}
+        - name: config_root
+          default: ${workspace.file_path}/conf
+        - name: registered_model_name
+          default: ""
+        - name: model_alias
+          default: Champion
+      tasks:
+        - task_key: register_and_promote
+          environment_key: serverless_ml
+          max_retries: 0
+          retry_on_timeout: false
+          spark_python_task:
+            python_file: ../../scripts/ml/promote_model.py
+            parameters:
+              - --model-run-id
+              - "{{job.parameters.model_run_id}}"
+              - --environment
+              - "{{job.parameters.environment}}"
+              - --config-root
+              - "{{job.parameters.config_root}}"
+              - --registered-model-name
+              - "{{job.parameters.registered_model_name}}"
+              - --model-alias
+              - "{{job.parameters.model_alias}}"
+      environments:
+        - environment_key: serverless_ml
+          spec:
+            environment_version: "4"
+            dependencies:
+              - ../../dist/*.whl

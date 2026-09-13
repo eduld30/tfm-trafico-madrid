@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "madrid-ingestion"
+version = "0.2.0"
+description = "Arquitectura Medallion y ML para datos abiertos de Madrid"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.7,<3",
+    "PyYAML>=6,<7",
+    "shapely>=2,<3",
+]
+
+[project.optional-dependencies]
+databricks = [
+    "pyspark[ml]>=3.5,<4",
+    "delta-spark>=3,<4",
+    "pandas>=2,<3",
+    "setuptools>=68",
+]
+dev = [
+    "build>=1,<2",
+    "pytest>=8,<9",
+    "ruff>=0.5",
+]
+
+[project.scripts]
+madrid-ingestion = "madrid_ingestion.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"madrid_ingestion.resources" = ["*.kml"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

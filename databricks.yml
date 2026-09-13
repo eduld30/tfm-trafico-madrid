@@ -1,0 +1,38 @@
+bundle:
+  name: madrid-ingestion
+  databricks_cli_version: ">= 0.256.0"
+
+include:
+  - resources/jobs/*.job.yml
+
+artifacts:
+  default:
+    type: whl
+    path: .
+    build: python -m build --wheel
+    dynamic_version: true
+
+sync:
+  include:
+    - conf/**
+
+variables:
+  environment:
+    description: "Entorno lógico usado por el motor de ingesta"
+    default: dev
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      environment: dev
+
+  pro:
+    mode: production
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      environment: pro
