@@ -125,7 +125,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DEPLOY_TARGET: ${{ needs.resolve_environment.outputs.target }}
-      ADF_FACTORY_RESOURCE_ID: /subscriptions/${{ vars.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ needs.resolve_environment.outputs.resource_group }}/providers/Microsoft.DataFactory/factories/${{ needs.resolve_environment.outputs.factory_name }}
+      ADF_FACTORY_RESOURCE_ID: /subscriptions/${{ vars.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ vars.DEV_RESOURCE_GROUP }}/providers/Microsoft.DataFactory/factories/${{ vars.DEV_FACTORY_NAME }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
