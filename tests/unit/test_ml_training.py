@@ -1,7 +1,7 @@
 from dataclasses import replace
-from datetime import datetime
 
 import pytest
+from pyspark.sql import functions as F
 
 from madrid_ml.training import (
     TrainingConfig,
@@ -11,20 +11,30 @@ from madrid_ml.training import (
 
 def test_temporal_folds_are_expanding_and_non_overlapping(spark):
     rows = [
-        (datetime(2021, 12, 31, 23),),
-        (datetime(2022, 1, 1),),
-        (datetime(2022, 12, 31, 23),),
-        (datetime(2023, 1, 1),),
-        (datetime(2023, 12, 31, 23),),
+        ("2021-12-31 23:00:00",),
+        ("2022-01-01 00:00:00",),
+        ("2022-12-31 23:00:00",),
+        ("2023-01-01 00:00:00",),
+        ("2023-12-31 23:00:00",),
     ]
-    frame = spark.createDataFrame(rows, "feature_hour timestamp")
+    frame = spark.createDataFrame(rows, "feature_hour string").withColumn(
+        "feature_hour", F.to_timestamp("feature_hour")
+    )
 
     fold_1, fold_2 = build_temporal_folds(frame)
 
-    assert [row.feature_hour.year for row in fold_1.train.collect()] == [2021]
-    assert {row.feature_hour.year for row in fold_1.validation.collect()} == {2022}
-    assert {row.feature_hour.year for row in fold_2.train.collect()} == {2021, 2022}
-    assert {row.feature_hour.year for row in fold_2.validation.collect()} == {2023}
+    def years(dataframe):
+        return {
+            row.year
+            for row in dataframe.select(F.year("feature_hour").alias("year"))
+            .distinct()
+            .collect()
+        }
+
+    assert years(fold_1.train) == {2021}
+    assert years(fold_1.validation) == {2022}
+    assert years(fold_2.train) == {2021, 2022}
+    assert years(fold_2.validation) == {2023}
 
 
 def test_training_config_requires_a_unity_catalog_volume_path():

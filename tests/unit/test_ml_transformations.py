@@ -1,4 +1,5 @@
 import pytest
+from pyspark.sql import functions as F
 
 from madrid_ml.contract import AIR_MAGNITUDES, FEATURE_BASE_COLUMNS, WEATHER_MAGNITUDES
 from madrid_ml.transformations import (
@@ -23,11 +24,16 @@ def test_two_people_in_same_accident_count_once_for_next_hour(spark):
         "cod_distrito int, feature_hour string",
     ).selectExpr("cod_distrito", "to_timestamp(feature_hour) feature_hour")
 
-    row = build_accident_labels(accidents, grid).first()
+    row = build_accident_labels(accidents, grid).select(
+        "*",
+        F.date_format("prediction_hour", "yyyy-MM-dd HH:mm:ss").alias(
+            "prediction_hour_text"
+        ),
+    ).first()
 
     assert row.n_accidentes_next_hour == 1
     assert row.target_accident_next_hour == 1
-    assert str(row.prediction_hour) == "2024-01-02 11:00:00"
+    assert row.prediction_hour_text == "2024-01-02 11:00:00"
 
 
 def test_any_null_required_field_excludes_the_whole_accident(spark):
@@ -164,10 +170,15 @@ def test_traffic_final_bucket_is_inclusive(spark):
         "vmed",
     )
 
-    rows = aggregate_traffic(traffic).collect()
+    rows = aggregate_traffic(traffic).select(
+        "*",
+        F.date_format("feature_hour", "yyyy-MM-dd HH:mm:ss").alias(
+            "feature_hour_text"
+        ),
+    ).collect()
 
     assert len(rows) == 1
-    assert str(rows[0].feature_hour) == "2026-06-30 22:00:00"
+    assert rows[0].feature_hour_text == "2026-06-30 22:00:00"
     assert rows[0].trafico_intensidad_media == 1.0
     assert rows[0].trafico_puntos_n == 1
 

@@ -118,6 +118,11 @@ def current_madrid_cutoff() -> datetime:
     return floor_to_ten_minutes(datetime.now(ZoneInfo(MADRID_TIMEZONE)))
 
 
+def _wall_clock_timestamp(value: datetime):
+    """Build a Spark timestamp literal without host-timezone conversion."""
+    return F.lit(value.isoformat(sep=" ")).cast("timestamp")
+
+
 def _require_columns(df: DataFrame, columns: tuple[str, ...], logical_table: str) -> None:
     missing = sorted(set(columns).difference(df.columns))
     if missing:
@@ -147,8 +152,8 @@ def _traffic_features(
     speed_column = "vmed" if "vmed" in traffic.columns else "velocidad"
     _require_columns(traffic, (speed_column,), logical_table)
     filtered = traffic.where(
-        (F.col("fecha_hora") >= F.lit(window_start).cast("timestamp"))
-        & (F.col("fecha_hora") < F.lit(cutoff).cast("timestamp"))
+        (F.col("fecha_hora") >= _wall_clock_timestamp(window_start))
+        & (F.col("fecha_hora") < _wall_clock_timestamp(cutoff))
         & F.col("distrito_cod").isNotNull()
     )
     aggregated = filtered.groupBy(
@@ -189,7 +194,7 @@ def _latest_magnitude_features(
         ordering.append(F.col("_silver_processed_timestamp").desc())
     latest = (
         frame.where(
-            (F.col("fecha_hora") <= F.lit(cutoff).cast("timestamp"))
+            (F.col("fecha_hora") <= _wall_clock_timestamp(cutoff))
             & F.col("distrito_cod").isNotNull()
             & F.col("magnitud").isin(*(spec.code for spec in specs))
         )
@@ -270,8 +275,8 @@ def build_nrt_feature_snapshot(
         districts.join(traffic, "cod_distrito", "left")
         .join(weather, "cod_distrito", "left")
         .join(air, "cod_distrito", "left")
-        .withColumn("feature_hour", F.lit(window_start).cast("timestamp"))
-        .withColumn("prediction_hour", F.lit(cutoff).cast("timestamp"))
+        .withColumn("feature_hour", _wall_clock_timestamp(window_start))
+        .withColumn("prediction_hour", _wall_clock_timestamp(cutoff))
         .withColumn("hora_dia", F.hour("feature_hour").cast("int"))
         .withColumn("dia_semana", F.dayofweek("feature_hour").cast("int"))
         .withColumn("mes", F.month("feature_hour").cast("int"))

@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta
 
 import pytest
@@ -337,11 +338,35 @@ def lineage_frame(spark, **overrides):
 def test_split_uses_utc_half_open_boundaries(spark):
     frame = spark.createDataFrame(
         [
-            make_row(feature_hour=datetime(2023, 12, 31, 23), hora_dia=23, mes=12),
-            make_row(feature_hour=datetime(2024, 1, 1), hora_dia=0, mes=1),
-            make_row(feature_hour=datetime(2025, 1, 1), hora_dia=0, mes=1),
-            make_row(feature_hour=datetime(2026, 1, 1), hora_dia=0, mes=1),
+            make_row(
+                feature_hour="2023-12-31 23:00:00",
+                prediction_hour="2024-01-01 00:00:00",
+                hora_dia=23,
+                mes=12,
+            ),
+            make_row(
+                feature_hour="2024-01-01 00:00:00",
+                prediction_hour="2024-01-01 01:00:00",
+                hora_dia=0,
+                mes=1,
+            ),
+            make_row(
+                feature_hour="2025-01-01 00:00:00",
+                prediction_hour="2025-01-01 01:00:00",
+                hora_dia=0,
+                mes=1,
+            ),
+            make_row(
+                feature_hour="2026-01-01 00:00:00",
+                prediction_hour="2026-01-01 01:00:00",
+                hora_dia=0,
+                mes=1,
+            ),
         ]
+    ).withColumn(
+        "feature_hour", F.to_timestamp("feature_hour")
+    ).withColumn(
+        "prediction_hour", F.to_timestamp("prediction_hour")
     )
     from madrid_ml.preprocessing import _split_by_feature_hour
 
@@ -599,6 +624,10 @@ def test_fit_preprocessor_rejects_zero_standard_deviation(spark):
         fit_test_preprocessor(spark, train)
 
 
+@pytest.mark.skipif(
+    os.name == "nt" and not os.environ.get("HADOOP_HOME"),
+    reason="Spark ML persistence on Windows requires winutils.exe",
+)
 def test_pipeline_model_round_trip_preserves_vector(
     spark, tmp_path, complete_training_frame, complete_fitted_preprocessor
 ):

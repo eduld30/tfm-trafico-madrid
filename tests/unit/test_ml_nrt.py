@@ -42,6 +42,11 @@ def test_traffic_features_use_exact_rolling_hour(spark):
         traffic,
         window_start=datetime(2024, 1, 2, 9),
         cutoff=datetime(2024, 1, 2, 10),
+    ).select(
+        "*",
+        F.date_format(
+            "traffic_data_max_timestamp", "yyyy-MM-dd HH:mm:ss"
+        ).alias("traffic_data_max_timestamp_text"),
     ).first()
 
     assert row.trafico_intensidad_media == 20.0
@@ -50,7 +55,7 @@ def test_traffic_features_use_exact_rolling_hour(spark):
     assert row.trafico_vmed_media == 4.0
     assert row.trafico_puntos_n == 2
     assert math.isfinite(row.trafico_intensidad_media)
-    assert str(row.traffic_data_max_timestamp) == "2024-01-02 09:55:00"
+    assert row.traffic_data_max_timestamp_text == "2024-01-02 09:55:00"
 
 
 def test_latest_magnitude_value_is_selected_per_station(spark):
@@ -74,11 +79,16 @@ def test_latest_magnitude_value_is_selected_per_station(spark):
         cutoff=datetime(2024, 1, 2, 10),
         logical_table="meteo.meteo_nrt",
         timestamp_output="weather_data_max_timestamp",
+    ).select(
+        "*",
+        F.date_format(
+            "weather_data_max_timestamp", "yyyy-MM-dd HH:mm:ss"
+        ).alias("weather_data_max_timestamp_text"),
     ).first()
 
     assert getattr(row, temperature.mean_column) == 25.0
     assert getattr(row, temperature.count_column) == 2
-    assert str(row.weather_data_max_timestamp) == "2024-01-02 09:00:00"
+    assert row.weather_data_max_timestamp_text == "2024-01-02 09:00:00"
 
 
 def test_nrt_snapshot_validation_requires_all_districts(spark):
