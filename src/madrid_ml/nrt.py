@@ -118,6 +118,11 @@ def current_madrid_cutoff() -> datetime:
     return floor_to_ten_minutes(datetime.now(ZoneInfo(MADRID_TIMEZONE)))
 
 
+def _cutoff_minute_end(cutoff: datetime) -> datetime:
+    """Return the exclusive end of the minute represented by ``cutoff``."""
+    return cutoff + timedelta(minutes=1)
+
+
 def _wall_clock_timestamp(value: datetime):
     """Build a Spark timestamp literal without host-timezone conversion."""
     return F.lit(value.isoformat(sep=" ")).cast("timestamp")
@@ -153,7 +158,7 @@ def _traffic_features(
     _require_columns(traffic, (speed_column,), logical_table)
     filtered = traffic.where(
         (F.col("fecha_hora") >= _wall_clock_timestamp(window_start))
-        & (F.col("fecha_hora") < _wall_clock_timestamp(cutoff))
+        & (F.col("fecha_hora") < _wall_clock_timestamp(_cutoff_minute_end(cutoff)))
         & F.col("distrito_cod").isNotNull()
     )
     aggregated = filtered.groupBy(
@@ -194,7 +199,10 @@ def _latest_magnitude_features(
         ordering.append(F.col("_silver_processed_timestamp").desc())
     latest = (
         frame.where(
-            (F.col("fecha_hora") <= _wall_clock_timestamp(cutoff))
+            (
+                F.col("fecha_hora")
+                < _wall_clock_timestamp(_cutoff_minute_end(cutoff))
+            )
             & F.col("distrito_cod").isNotNull()
             & F.col("magnitud").isin(*(spec.code for spec in specs))
         )
