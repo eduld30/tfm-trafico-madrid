@@ -35,9 +35,12 @@ distritos, carga el modelo registrado con alias `Champion` y publica:
 
 La tabla conserva el histórico mediante `MERGE` con
 `cod_distrito + prediction_window_start`; la vista devuelve el lote más
-reciente. El cutoff se redondea a diez minutos en hora civil de Madrid y la
-predicción cubre los 60 minutos siguientes. `predicted_at` registra también la
-hora civil de Madrid y respeta los cambios CET/CEST.
+reciente. El cutoff se redondea a diez minutos en hora civil de Madrid y abarca
+el minuto completo: un cutoff `20:40` incluye cualquier micro-batch con marca
+temporal entre `20:40:00` y `20:40:59.999999`. De este modo no se descartan las
+observaciones con segundos del intervalo recién ingerido. La predicción cubre
+los 60 minutos siguientes. `predicted_at` registra también la hora civil de
+Madrid y respeta los cambios CET/CEST.
 
 El job `gold_nrt_predictions` no tiene calendario propio. ADF lo invoca tras
 completar correctamente la ingesta de tráfico NRT, generando una predicción
