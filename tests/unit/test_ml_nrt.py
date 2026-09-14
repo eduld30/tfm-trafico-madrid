@@ -24,7 +24,7 @@ def test_floor_to_ten_minutes_uses_madrid_wall_clock():
     assert observed.tzinfo is None
 
 
-def test_traffic_features_use_exact_rolling_hour(spark):
+def test_traffic_features_include_the_complete_cutoff_minute(spark):
     traffic = spark.createDataFrame(
         [
             ("2024-01-02 08:59:59", 1, 99.0, 99.0, 99.0, 99.0),
@@ -49,13 +49,13 @@ def test_traffic_features_use_exact_rolling_hour(spark):
         ).alias("traffic_data_max_timestamp_text"),
     ).first()
 
-    assert row.trafico_intensidad_media == 20.0
-    assert row.trafico_ocupacion_media == 2.0
-    assert row.trafico_carga_media == 3.0
-    assert row.trafico_vmed_media == 4.0
-    assert row.trafico_puntos_n == 2
+    assert row.trafico_intensidad_media == pytest.approx(139.0 / 3.0)
+    assert row.trafico_ocupacion_media == pytest.approx(103.0 / 3.0)
+    assert row.trafico_carga_media == 35.0
+    assert row.trafico_vmed_media == pytest.approx(107.0 / 3.0)
+    assert row.trafico_puntos_n == 3
     assert math.isfinite(row.trafico_intensidad_media)
-    assert row.traffic_data_max_timestamp_text == "2024-01-02 09:55:00"
+    assert row.traffic_data_max_timestamp_text == "2024-01-02 10:00:00"
 
 
 def test_latest_magnitude_value_is_selected_per_station(spark):
