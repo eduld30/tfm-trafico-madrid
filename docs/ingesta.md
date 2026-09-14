@@ -100,7 +100,7 @@ ejecutan el job de Databricks correspondiente.
 
 | Carga | Frecuencia configurada |
 |---|---|
-| Tráfico NRT | 10 minutos |
+| Tráfico NRT | 5 minutos |
 | Meteorología y calidad del aire NRT | 20 minutos |
 | Eventos | Diaria, 07:00 |
 | Históricos | Día 1 mensual, entre 07:00 y 09:30 |
